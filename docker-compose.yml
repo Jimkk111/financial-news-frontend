@@ -10,9 +10,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       # ACME HTTP-01 验证文件（certbot/acme.sh 写入宿主机，nginx 对外提供）
       - ./certbot/wwwroot:/var/www/certbot
+      # TLS 证书（acme.sh --install-cert 维护，含续期后自动 reload）
+      - ./certs:/etc/nginx/ssl:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Linux 下访问宿主机
     networks:
