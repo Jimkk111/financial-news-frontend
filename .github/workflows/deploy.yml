@@ -67,7 +67,11 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
-            cd "${{ secrets.DEPLOY_PATH }}" || { echo "部署失败：服务器上不存在目录 ${{ secrets.DEPLOY_PATH }}，请检查 DEPLOY_PATH 是否为仓库实际路径"; exit 1; }
+            # secret 粘贴时可能带上换行/首尾空格，或写成 ~ 开头，统一规整后再使用
+            DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_DIR="$(printf '%s' "$DEPLOY_DIR" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            DEPLOY_DIR="${DEPLOY_DIR/#\~/$HOME}"
+            cd "$DEPLOY_DIR" || { echo "部署失败：服务器上不存在目录 $DEPLOY_DIR，请检查 DEPLOY_PATH 是否为仓库实际路径"; exit 1; }
             echo "[1/3] 拉取最新代码（${{ github.ref_name }}）..."
             git fetch origin
             git checkout ${{ github.ref_name }}
