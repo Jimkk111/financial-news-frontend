@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { NIcon } from 'naive-ui'
 import { X } from 'lucide-vue-next'
-import { getNewsTags } from '@/services/newsService'
+import { getTags } from '@/api/news'
 import type { Tag } from '@/types'
 
 interface Props {
@@ -19,7 +19,7 @@ const tags = ref<Tag[]>([])
 
 const loadTags = async () => {
   try {
-    tags.value = await getNewsTags()
+    tags.value = await getTags()
   } catch {
     // 加载失败时保持空数组
   }

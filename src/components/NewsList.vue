@@ -4,7 +4,7 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { NEmpty, NSpin, NIcon } from 'naive-ui'
 import { FileText } from 'lucide-vue-next'
-import { getNewsList } from '@/services/newsService'
+import { getNewsList } from '@/api/news'
 import { formatTime } from '@/utils/format'
 import NewsItem from './NewsItem.vue'
 import NewsListSkeleton from './NewsListSkeleton.vue'
@@ -48,12 +48,12 @@ const fetchNews = async () => {
     }
     error.value = null
 
-    const response = await getNewsList(
-      page.value,
-      20,
-      props.categoryId || undefined,
-      'newest'
-    )
+    const response = await getNewsList({
+      page: page.value,
+      pageSize: 20,
+      categoryId: props.categoryId || undefined,
+      sort: 'newest'
+    })
 
     const formattedNews: LocalNewsItem[] = response.data.map((news: NewsItemType) => ({
       id: news.id,

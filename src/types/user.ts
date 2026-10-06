@@ -35,11 +35,3 @@ export interface ResetPasswordRequest {
 export interface MessageResponse {
   message: string
 }
-
-export interface AvatarUploadResponse {
-  avatar: string
-}
-
-export interface CheckFavoriteResponse {
-  is_favorite: boolean
-}

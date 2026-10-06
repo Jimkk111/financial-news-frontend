@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NPopconfirm, NSpin } from 'naive-ui'
 import { ArrowLeft, Edit, FileText, Trash2 } from 'lucide-vue-next'
-import { getDraftsList, deleteDraftService } from '@/services/newsEditorService'
+import { getDrafts, deleteDraft } from '@/api/draft'
 import { formatTime } from '@/utils/format'
 import type { NewsDraft } from '@/types'
 
@@ -22,17 +22,21 @@ const loading = ref(true)
 
 const loadDrafts = async () => {
   loading.value = true
-  const response = await getDraftsList()
-  if (response.success && response.data) {
-    drafts.value = response.data
+  try {
+    drafts.value = await getDrafts()
+  } catch (error) {
+    console.error('获取草稿列表失败:', error)
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 const handleDelete = async (id: string) => {
-  const response = await deleteDraftService(id)
-  if (response.success) {
+  try {
+    await deleteDraft(id)
     loadDrafts()
+  } catch (error) {
+    console.error('删除草稿失败:', error)
   }
 }
 

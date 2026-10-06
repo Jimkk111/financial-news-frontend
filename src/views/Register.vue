@@ -3,11 +3,9 @@ import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-vue-next'
-import {
-  register,
-  sendCode,
-  type RegisterRequest,
-} from '@/services/userService'
+import { register, sendVerificationCode } from '@/api/auth'
+import type { RegisterRequest } from '@/types'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -47,23 +45,19 @@ const handleSendCode = async () => {
 
   try {
     codeLoading.value = true
-    const response = await sendCode(email.value)
-    if (response.success) {
-      codeSent.value = true
-      error.value = ''
-      countdown.value = 60
-      countdownTimer = setInterval(() => {
-        countdown.value--
-        if (countdown.value <= 0) {
-          clearInterval(countdownTimer!)
-          countdownTimer = null
-        }
-      }, 1000)
-    } else {
-      error.value = response.error?.message || '发送验证码失败'
-    }
+    await sendVerificationCode(email.value)
+    codeSent.value = true
+    error.value = ''
+    countdown.value = 60
+    countdownTimer = setInterval(() => {
+      countdown.value--
+      if (countdown.value <= 0) {
+        clearInterval(countdownTimer!)
+        countdownTimer = null
+      }
+    }, 1000)
   } catch (err) {
-    error.value = '发送验证码失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '发送验证码失败，请稍后重试')
   } finally {
     codeLoading.value = false
   }
@@ -116,16 +110,11 @@ const handleSubmit = async (e: Event) => {
       code: code.value.trim(),
     }
 
-    const response = await register(registerRequest)
-
-    if (response.success && response.data) {
-      authStore.login(response.data.user)
-      router.push('/')
-    } else {
-      error.value = response.error?.message || '注册失败'
-    }
+    const { user } = await register(registerRequest)
+    authStore.login(user)
+    router.push('/')
   } catch (err) {
-    error.value = '注册失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '注册失败，请稍后重试')
   } finally {
     loading.value = false
   }

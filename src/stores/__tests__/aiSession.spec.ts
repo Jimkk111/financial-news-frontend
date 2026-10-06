@@ -4,13 +4,13 @@ import type { StreamChatHandle, StreamChatOptions, StreamChatResult } from '@/ap
 import type { AiSource } from '@/types'
 import { ApiError } from '@/api/request'
 
-vi.mock('@/services/aiService', () => ({
+vi.mock('@/api/ai', () => ({
   createSession: vi.fn(),
   getSessions: vi.fn(),
   getSessionMessages: vi.fn(),
   deleteSession: vi.fn(),
   updateSessionTitle: vi.fn(),
-  startStreamingChat: vi.fn(),
+  streamChat: vi.fn(),
   healthCheck: vi.fn(),
 }))
 
@@ -30,13 +30,13 @@ import {
   createSession,
   getSessions,
   getSessionMessages,
-  startStreamingChat,
-} from '@/services/aiService'
+  streamChat,
+} from '@/api/ai'
 
 const createSessionMock = vi.mocked(createSession)
 const getSessionsMock = vi.mocked(getSessions)
 const getSessionMessagesMock = vi.mocked(getSessionMessages)
-const startStreamingChatMock = vi.mocked(startStreamingChat)
+const streamChatMock = vi.mocked(streamChat)
 
 /** 构造可控的流式 handle：测试中手动派发增量 / 完成 / 中止 */
 function createStreamHandle() {
@@ -64,7 +64,7 @@ function createStreamHandle() {
     resolve: (result: StreamChatResult) => capturedResolve?.(result),
     reject: (error: unknown) => capturedReject?.(error),
     inject: () => {
-      startStreamingChatMock.mockImplementation((_messages, options) => {
+      streamChatMock.mockImplementation((_messages, options) => {
         capturedOptions = options
         return handle
       })
@@ -88,7 +88,7 @@ describe('useAiSessionStore', () => {
 
   describe('sendMessage', () => {
     it('流式完成后消息落位、会话 ID 更新', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -113,7 +113,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('停止生成保留已收到的部分回复', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -138,7 +138,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('未收到任何内容时停止则移除占位消息', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -155,7 +155,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('思考链先于正文流式展示，完成后保留 reasoning 与思考耗时', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -193,7 +193,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('非思考型模型无 reasoning 时消息不带该字段', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -210,7 +210,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('思考中停止生成时保留已收到的思考链', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -233,7 +233,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('思考链已到但流式失败时保留思考链并提示错误', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -255,7 +255,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('请求受理即显示思考中占位消息，首增量到达后正常流式', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -283,7 +283,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('受理后未收到任何内容即停止则移除占位消息', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -304,7 +304,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('联网搜索开关随请求下发并持久化', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -333,7 +333,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('引用来源分批到达时追加到消息，完成后保留', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -364,7 +364,7 @@ describe('useAiSessionStore', () => {
     })
 
     it('搜索阶段停止生成时保留已收到的来源', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
       stream.inject()
 
@@ -385,8 +385,8 @@ describe('useAiSessionStore', () => {
     })
 
     it('请求失败时保留用户消息并弹出错误提示', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
-      startStreamingChatMock.mockReturnValue({
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
+      streamChatMock.mockReturnValue({
         promise: Promise.reject(new ApiError('500', '模型服务过载')),
         abort: vi.fn(),
       })
@@ -404,11 +404,11 @@ describe('useAiSessionStore', () => {
     it('空内容不触发发送', async () => {
       const store = useAiSessionStore()
       await store.sendMessage('   ')
-      expect(startStreamingChatMock).not.toHaveBeenCalled()
+      expect(streamChatMock).not.toHaveBeenCalled()
     })
 
     it('切换会话后旧流结果不写入新会话', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       getSessionMessagesMock.mockResolvedValue([])
       const stream = createStreamHandle()
       stream.inject()
@@ -460,7 +460,7 @@ describe('useAiSessionStore', () => {
 
   describe('regenerate', () => {
     it('移除最后一轮问答后重发用户消息', async () => {
-      createSessionMock.mockResolvedValue('sess-1')
+      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream1 = createStreamHandle()
       stream1.inject()
 
