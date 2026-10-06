@@ -3,14 +3,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { watch } from 'vue'
 import type { Category } from '@/types'
 
-vi.mock('@/services/newsService', () => ({
-  getNewsCategories: vi.fn(),
+vi.mock('@/api/news', () => ({
+  getCategories: vi.fn(),
 }))
 
 import { useNewsCategoryStore } from '../newsCategory'
-import { getNewsCategories } from '@/services/newsService'
+import { getCategories } from '@/api/news'
 
-const getNewsCategoriesMock = vi.mocked(getNewsCategories)
+const getCategoriesMock = vi.mocked(getCategories)
 
 const CATEGORIES: Category[] = [
   { id: 1, name: '科技' },
@@ -26,19 +26,19 @@ describe('useNewsCategoryStore', () => {
 
   it('fetchCategories 加载分类，items 以"全部"为首项', async () => {
     // 后端历史形态：{ data: [...] } 包装
-    getNewsCategoriesMock.mockResolvedValue({ data: CATEGORIES } as never)
+    getCategoriesMock.mockResolvedValue({ data: CATEGORIES } as never)
 
     const store = useNewsCategoryStore()
     await store.fetchCategories()
 
-    expect(getNewsCategoriesMock).toHaveBeenCalledTimes(1)
+    expect(getCategoriesMock).toHaveBeenCalledTimes(1)
     expect(store.categories).toHaveLength(3)
     expect(store.items[0]).toEqual({ id: null, name: '全部' })
     expect(store.items[1]).toMatchObject({ id: 1, name: '科技' })
   })
 
   it('裸数组返回形态同样兼容', async () => {
-    getNewsCategoriesMock.mockResolvedValue(CATEGORIES)
+    getCategoriesMock.mockResolvedValue(CATEGORIES)
 
     const store = useNewsCategoryStore()
     await store.fetchCategories()
@@ -47,17 +47,17 @@ describe('useNewsCategoryStore', () => {
   })
 
   it('已加载后再次调用不重复请求', async () => {
-    getNewsCategoriesMock.mockResolvedValue(CATEGORIES)
+    getCategoriesMock.mockResolvedValue(CATEGORIES)
 
     const store = useNewsCategoryStore()
     await store.fetchCategories()
     await store.fetchCategories()
 
-    expect(getNewsCategoriesMock).toHaveBeenCalledTimes(1)
+    expect(getCategoriesMock).toHaveBeenCalledTimes(1)
   })
 
   it('switchByOffset 按顺序切换且边界钳制', async () => {
-    getNewsCategoriesMock.mockResolvedValue(CATEGORIES)
+    getCategoriesMock.mockResolvedValue(CATEGORIES)
     const store = useNewsCategoryStore()
     await store.fetchCategories()
 
@@ -83,7 +83,7 @@ describe('useNewsCategoryStore', () => {
   })
 
   it('switchTo 同值不触发响应式更新', async () => {
-    getNewsCategoriesMock.mockResolvedValue(CATEGORIES)
+    getCategoriesMock.mockResolvedValue(CATEGORIES)
     const store = useNewsCategoryStore()
     await store.fetchCategories()
 

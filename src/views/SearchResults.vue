@@ -3,7 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NEmpty, NIcon, NSpin } from 'naive-ui'
 import { ArrowLeft, FileText } from 'lucide-vue-next'
-import { searchNews } from '@/services/newsService'
+import { searchNews } from '@/api/news'
 import { formatTime } from '@/utils/format'
 import BottomNav from '@/components/BottomNav.vue'
 import NewsItem from '@/components/NewsItem.vue'
@@ -29,7 +29,7 @@ const performSearch = async () => {
   try {
     loading.value = true
     error.value = null
-    const response = await searchNews(keyword.value.trim())
+    const response = await searchNews({ keyword: keyword.value.trim(), pageSize: 20 })
     results.value = response.data || []
   } catch (err) {
     error.value = '搜索失败，请稍后重试'

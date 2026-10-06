@@ -11,17 +11,9 @@ import {
   MoreVertical,
   Share2,
 } from 'lucide-vue-next'
-import {
-  getNewsDetail,
-  incrementNewsViews,
-  getNewsList,
-} from '@/services/newsService'
-import {
-  addHistory,
-  addFavorite,
-  removeFavorite,
-  checkFavorite,
-} from '@/services/userService'
+import { getNewsDetail, incrementViews, getNewsList } from '@/api/news'
+import { addHistory } from '@/api/history'
+import { addFavorite, removeFavorite, checkFavorite } from '@/api/favorite'
 import { formatTime } from '@/utils/format'
 import ArticleContent from '@/components/content/ArticleContent.vue'
 import { normalizeContent } from '@/utils/content/validateContent'
@@ -58,10 +50,8 @@ const checkFavoritedStatus = async () => {
   if (!uid) return
 
   try {
-    const response = await checkFavorite(newsId.value)
-    if (response.success && response.data) {
-      isFavorited.value = response.data.is_favorite
-    }
+    const { is_favorite } = await checkFavorite(newsId.value)
+    isFavorited.value = is_favorite
   } catch (err) {
     console.error('检查收藏状态失败:', err)
   }
@@ -74,21 +64,13 @@ const toggleFavorite = async () => {
 
   try {
     if (isFavorited.value) {
-      const response = await removeFavorite(newsId.value)
-      if (response.success) {
-        isFavorited.value = false
-        message.success('已取消收藏')
-      } else {
-        console.error('取消收藏失败:', response.error?.message)
-      }
+      await removeFavorite(newsId.value)
+      isFavorited.value = false
+      message.success('已取消收藏')
     } else {
-      const response = await addFavorite(newsId.value)
-      if (response.success) {
-        isFavorited.value = true
-        message.success('已加入收藏')
-      } else {
-        console.error('添加收藏失败:', response.error?.message)
-      }
+      await addFavorite(newsId.value)
+      isFavorited.value = true
+      message.success('已加入收藏')
     }
   } catch (error) {
     console.error('收藏操作失败:', error)
@@ -141,7 +123,11 @@ const getRelatedNews = (currentNews: NewsType, allNews: NewsItem[]): NewsItem[] 
 
 const loadRelatedNews = async (currentNews: NewsType) => {
   try {
-    const response = await getNewsList(1, 50, currentNews.categoryId || undefined)
+    const response = await getNewsList({
+      page: 1,
+      pageSize: 50,
+      categoryId: currentNews.categoryId || undefined,
+    })
     const related = getRelatedNews(currentNews, response.data)
     relatedNews.value = related
   } catch (error) {
@@ -160,7 +146,7 @@ const fetchNewsDetail = async () => {
     news.value = res
 
     try {
-      await incrementNewsViews(newsId.value)
+      await incrementViews(newsId.value)
     } catch (viewError) {
       console.error('增加阅读量失败:', viewError)
     }

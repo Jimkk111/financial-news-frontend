@@ -27,7 +27,8 @@ import {
   Undo2,
   Video,
 } from 'lucide-vue-next'
-import { uploadImage, uploadVideo } from '@/services/newsEditorService'
+import { uploadImage, uploadVideo } from '@/api/draft'
+import { validateUploadFile, IMAGE_UPLOAD_RULE, VIDEO_UPLOAD_RULE } from '@/utils/file'
 
 const props = defineProps<{
   modelValue: ArticleContent
@@ -250,16 +251,21 @@ const handleImageUpload = async (event: Event) => {
   const file = target.files?.[0]
   if (!file) return
 
-  isUploadingImage.value = true
-  const response = await uploadImage(file)
-  isUploadingImage.value = false
-
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
 
-  if (response.success && response.data) {
-    editor.value?.chain().focus().setImage({ src: response.data.url }).run()
+  // 编辑器内无错误展示区，文件不合法时静默忽略
+  if (validateUploadFile(file, IMAGE_UPLOAD_RULE)) return
+
+  isUploadingImage.value = true
+  try {
+    const { url } = await uploadImage(file)
+    editor.value?.chain().focus().setImage({ src: url }).run()
+  } catch (error) {
+    console.error('上传图片失败:', error)
+  } finally {
+    isUploadingImage.value = false
   }
 }
 
@@ -283,19 +289,23 @@ const handleVideoUpload = async (event: Event) => {
   const file = target.files?.[0]
   if (!file) return
 
-  isUploadingVideo.value = true
-  const response = await uploadVideo(file)
-  isUploadingVideo.value = false
-
   if (videoFileInputRef.value) {
     videoFileInputRef.value.value = ''
   }
 
-  if (response.success && response.data) {
+  if (validateUploadFile(file, VIDEO_UPLOAD_RULE)) return
+
+  isUploadingVideo.value = true
+  try {
+    const { url } = await uploadVideo(file)
     editor.value?.chain().focus().insertContent({
       type: 'video',
-      attrs: { src: response.data.url },
+      attrs: { src: url },
     }).run()
+  } catch (error) {
+    console.error('上传视频失败:', error)
+  } finally {
+    isUploadingVideo.value = false
   }
 }
 </script>

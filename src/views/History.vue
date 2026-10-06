@@ -3,7 +3,8 @@ import { reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NSpin } from 'naive-ui'
 import { ArrowLeft, BookOpen, Clock, Eye } from 'lucide-vue-next'
-import { getHistory } from '@/services/userService'
+import { getHistory } from '@/api/history'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 import { formatTime } from '@/utils/format'
 import type { HistoryItem, PaginationInfo } from '@/types'
@@ -49,24 +50,19 @@ const fetchHistory = async () => {
   state.error = null
 
   try {
-    const response = await getHistory(
-      state.pagination.page,
-      state.pagination.pageSize
-    )
+    const response = await getHistory({
+      page: state.pagination.page,
+      pageSize: state.pagination.pageSize,
+    })
 
-    if (response.success && response.data) {
-      state.items = response.data.data
-      state.loading = false
-      state.error = null
-      state.pagination = response.data.pagination
-    } else {
-      state.loading = false
-      state.error = response.error?.message || '获取浏览历史失败'
-    }
+    state.items = response.data
+    state.pagination = response.pagination
+    state.error = null
   } catch (error) {
-    state.loading = false
-    state.error = '网络错误，请稍后重试'
+    state.error = getApiErrorMessage(error, '获取浏览历史失败')
     console.error('获取浏览历史失败:', error)
+  } finally {
+    state.loading = false
   }
 }
 

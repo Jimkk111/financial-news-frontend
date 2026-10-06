@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NPagination, NPopconfirm, NSpin } from 'naive-ui'
 import { ArrowLeft, Clock, Eye, FileText, Trash2 } from 'lucide-vue-next'
-import { getPublishedList, deletePublishedNewsService } from '@/services/newsEditorService'
+import { getPublishedNews, deletePublishedNews } from '@/api/draft'
 import { formatTime } from '@/utils/format'
 import type { PublishedNews, PaginationInfo } from '@/types'
 
@@ -28,20 +28,23 @@ const pagination = ref<PaginationInfo>({
 
 const loadPublished = async (page: number = 1) => {
   loading.value = true
-  const response = await getPublishedList(page, pagination.value.pageSize)
-  if (response.success && response.data) {
+  try {
+    const response = await getPublishedNews(page, pagination.value.pageSize)
     publishedList.value = response.data
-    if (response.pagination) {
-      pagination.value = response.pagination
-    }
+    pagination.value = response.pagination
+  } catch (error) {
+    console.error('获取已发布列表失败:', error)
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 const handleDelete = async (id: number) => {
-  const response = await deletePublishedNewsService(id)
-  if (response.success) {
+  try {
+    await deletePublishedNews(id)
     loadPublished(pagination.value.page)
+  } catch (error) {
+    console.error('删除已发布新闻失败:', error)
   }
 }
 

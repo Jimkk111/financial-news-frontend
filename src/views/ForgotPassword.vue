@@ -3,7 +3,9 @@ import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { ArrowLeft } from 'lucide-vue-next'
-import { sendCode, resetPassword, type ResetPasswordRequest } from '@/services/userService'
+import { sendVerificationCode, resetPassword } from '@/api/auth'
+import type { ResetPasswordRequest } from '@/types'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 const router = useRouter()
 
@@ -53,24 +55,20 @@ const handleSendCode = async () => {
 
   try {
     codeLoading.value = true
-    const response = await sendCode(email.value, username.value)
-    if (response.success) {
-      isCodeSent.value = true
-      error.value = ''
-      success.value = '验证码已发送，请查收邮件'
-      countdown.value = 60
-      countdownTimer = setInterval(() => {
-        countdown.value--
-        if (countdown.value <= 0) {
-          clearInterval(countdownTimer!)
-          countdownTimer = null
-        }
-      }, 1000)
-    } else {
-      error.value = response.error?.message || '发送验证码失败'
-    }
+    await sendVerificationCode(email.value, username.value)
+    isCodeSent.value = true
+    error.value = ''
+    success.value = '验证码已发送，请查收邮件'
+    countdown.value = 60
+    countdownTimer = setInterval(() => {
+      countdown.value--
+      if (countdown.value <= 0) {
+        clearInterval(countdownTimer!)
+        countdownTimer = null
+      }
+    }, 1000)
   } catch (err) {
-    error.value = '发送验证码失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '发送验证码失败，请稍后重试')
   } finally {
     codeLoading.value = false
   }
@@ -133,18 +131,13 @@ const handleResetPassword = async (e: Event) => {
       password: password.value,
     }
 
-    const response = await resetPassword(resetRequest)
-
-    if (response.success) {
-      success.value = '密码重置成功，请使用新密码登录'
-      setTimeout(() => {
-        router.push('/login')
-      }, 2000)
-    } else {
-      error.value = response.error?.message || '密码重置失败'
-    }
+    await resetPassword(resetRequest)
+    success.value = '密码重置成功，请使用新密码登录'
+    setTimeout(() => {
+      router.push('/login')
+    }, 2000)
   } catch (err) {
-    error.value = '密码重置失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '密码重置失败，请稍后重试')
   } finally {
     loading.value = false
   }

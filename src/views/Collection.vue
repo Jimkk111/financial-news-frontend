@@ -3,7 +3,8 @@ import { reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NPopconfirm, NSpin } from 'naive-ui'
 import { ArrowLeft, Clock, Eye, Heart, Trash2 } from 'lucide-vue-next'
-import { getFavorites, removeFavorite } from '@/services/userService'
+import { getFavorites, removeFavorite } from '@/api/favorite'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 import { formatTime } from '@/utils/format'
 import type { FavoriteItem, PaginationInfo } from '@/types'
@@ -49,24 +50,19 @@ const fetchFavorites = async () => {
   state.error = null
 
   try {
-    const response = await getFavorites(
-      state.pagination.page,
-      state.pagination.pageSize
-    )
+    const response = await getFavorites({
+      page: state.pagination.page,
+      pageSize: state.pagination.pageSize,
+    })
 
-    if (response.success && response.data) {
-      state.items = response.data.data
-      state.loading = false
-      state.error = null
-      state.pagination = response.data.pagination
-    } else {
-      state.loading = false
-      state.error = response.error?.message || '获取收藏列表失败'
-    }
+    state.items = response.data
+    state.pagination = response.pagination
+    state.error = null
   } catch (error) {
-    state.loading = false
-    state.error = '网络错误，请稍后重试'
+    state.error = getApiErrorMessage(error, '获取收藏列表失败')
     console.error('获取收藏列表失败:', error)
+  } finally {
+    state.loading = false
   }
 }
 
@@ -74,14 +70,9 @@ const handleRemoveFavorite = async (newsId: number) => {
   if (!uid) return
 
   try {
-    const response = await removeFavorite(newsId)
-
-    if (response.success) {
-      state.items = state.items.filter((item) => item.newsId !== newsId)
-      state.pagination.total = Math.max(0, state.pagination.total - 1)
-    } else {
-      console.error('取消收藏失败:', response.error?.message)
-    }
+    await removeFavorite(newsId)
+    state.items = state.items.filter((item) => item.newsId !== newsId)
+    state.pagination.total = Math.max(0, state.pagination.total - 1)
   } catch (error) {
     console.error('取消收藏失败:', error)
   }

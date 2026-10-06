@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import type { Category } from '@/types'
-import { getNewsCategories } from '@/services/newsService'
+import { getCategories } from '@/api/news'
 
 /**
  * 新闻分类状态：categories + activeCategoryId 的唯一真源。
@@ -30,7 +30,7 @@ export const useNewsCategoryStore = defineStore('newsCategory', () => {
     if (loaded) return
     loading.value = true
     try {
-      const response = (await getNewsCategories()) as unknown
+      const response = (await getCategories()) as unknown
       // 后端历史上存在 { data: [...] } 包装与裸数组两种形态
       const raw = (response as { data?: Category[] }).data ?? (response as Category[])
       categories.value = raw

@@ -9,9 +9,9 @@ import {
   getSessionMessages,
   deleteSession,
   updateSessionTitle,
-  startStreamingChat,
+  streamChat,
   healthCheck
-} from '@/services/aiService'
+} from '@/api/ai'
 
 export interface SessionGroup {
   label: string
@@ -304,7 +304,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       // 唯一的会话创建入口：发消息时才创建会话
       if (!sessionIdValue) {
         isLoading.value = true
-        const newSessionId = await createSession()
+        const { sessionId: newSessionId } = await createSession()
         if (epoch !== streamEpoch) return
         if (!newSessionId) {
           toast.error('创建会话失败，请重试')
@@ -325,7 +325,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           content: msg.content
         }))
 
-      const { promise, abort } = startStreamingChat(chatMessages, {
+      const { promise, abort } = streamChat(chatMessages, {
         sessionId: sessionIdValue,
         webSearch: webSearchEnabled.value,
         // 请求受理（sessionId 事件到达）即建占位消息：

@@ -1,13 +1,3 @@
-export interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-    details?: Array<{ field: string; message: string }>
-  }
-}
-
 export interface PaginationInfo {
   page: number
   pageSize: number

@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import { NButton, NIcon, NSpin } from 'naive-ui'
 import { ArrowLeft, Camera, User } from 'lucide-vue-next'
 import Avatar from '@/components/Avatar.vue'
-import { uploadAvatar, type AvatarUploadResponse } from '@/services/userService'
+import { uploadAvatar } from '@/api/user'
+import { validateUploadFile, IMAGE_UPLOAD_RULE } from '@/utils/file'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -35,15 +37,9 @@ const handleFileChange = async (event: Event) => {
 
   if (!file) return
 
-  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp']
-  if (!allowedTypes.includes(file.type)) {
-    error.value = '请选择有效的图片文件（PNG、JPEG、GIF、WebP）'
-    return
-  }
-
-  const maxSize = 5 * 1024 * 1024
-  if (file.size > maxSize) {
-    error.value = '图片大小不能超过 5MB'
+  const validationMessage = validateUploadFile(file, IMAGE_UPLOAD_RULE)
+  if (validationMessage) {
+    error.value = validationMessage
     return
   }
 
@@ -51,14 +47,10 @@ const handleFileChange = async (event: Event) => {
   isUploading.value = true
 
   try {
-    const response = await uploadAvatar(file)
-    if (response.success && response.data) {
-      authStore.user = { ...authStore.user!, avatar: response.data.avatar }
-    } else {
-      error.value = response.error?.message || '头像上传失败'
-    }
+    const { avatar } = await uploadAvatar(file)
+    authStore.user = { ...authStore.user!, avatar }
   } catch (err) {
-    error.value = '头像上传失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '头像上传失败，请稍后重试')
   } finally {
     isUploading.value = false
     if (fileInputRef.value) {

@@ -8,11 +8,12 @@ import TagSelector from '@/components/editor/TagSelector.vue'
 import TiptapEditor from '@/components/editor/TiptapEditor.vue'
 import {
   getDraft,
-  createDraftService,
-  updateDraftService,
-  publishNewsService,
-} from '@/services/newsEditorService'
-import { getNewsCategories } from '@/services/newsService'
+  createDraft,
+  updateDraft,
+  publishDraft,
+} from '@/api/draft'
+import { getCategories } from '@/api/news'
+import { getApiErrorMessage } from '@/utils/apiError'
 import type { Category } from '@/types'
 import type { ArticleContent } from '@/types/content'
 import { normalizeContent } from '@/utils/content/validateContent'
@@ -54,7 +55,7 @@ const categoryOptions = computed(() =>
 
 const loadCategories = async () => {
   try {
-    categories.value = await getNewsCategories()
+    categories.value = await getCategories()
   } catch {
     error.value = '加载分类失败'
   }
@@ -68,9 +69,8 @@ const loadDraft = async () => {
   const id = draftId.value
   if (!id) return
 
-  const response = await getDraft(id)
-  if (response.success && response.data) {
-    const draft = response.data
+  try {
+    const draft = await getDraft(id)
     currentDraftId.value = draft.id
     title.value = draft.title
     coverImage.value = draft.coverImage
@@ -78,6 +78,8 @@ const loadDraft = async () => {
     selectedTags.value = draft.tags ?? []
     content.value = normalizeContent(draft.content)
     lastSavedSnapshot = buildSnapshot()
+  } catch (error) {
+    console.error('加载草稿失败:', error)
   }
 }
 
@@ -104,37 +106,22 @@ const saveDraft = async (showSuccess = true) => {
 
   try {
     if (currentDraftId.value) {
-      const response = await updateDraftService(currentDraftId.value, payload)
-      if (response.success && response.data) {
-        if (showSuccess) {
-          successMessage.value = '草稿已保存'
-          setTimeout(() => {
-            successMessage.value = ''
-          }, 2000)
-        }
-      } else {
-        error.value = response.error?.message || '保存失败'
-        return
-      }
+      await updateDraft(currentDraftId.value, payload)
     } else {
-      const response = await createDraftService(payload)
-      if (response.success && response.data) {
-        currentDraftId.value = response.data.id
-        if (showSuccess) {
-          successMessage.value = '草稿已保存'
-          setTimeout(() => {
-            successMessage.value = ''
-          }, 2000)
-        }
-      } else {
-        error.value = response.error?.message || '保存失败'
-        return
-      }
+      const draft = await createDraft(payload)
+      currentDraftId.value = draft.id
+    }
+
+    if (showSuccess) {
+      successMessage.value = '草稿已保存'
+      setTimeout(() => {
+        successMessage.value = ''
+      }, 2000)
     }
 
     lastSavedSnapshot = buildSnapshot()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '保存失败'
+    error.value = getApiErrorMessage(err, '保存失败')
   } finally {
     saving.value = false
   }
@@ -162,15 +149,14 @@ const publish = async () => {
     return
   }
 
-  const response = await publishNewsService(currentDraftId.value)
-
-  if (response.success && response.data) {
-    router.push(`/news/${response.data.id}`)
-  } else {
-    error.value = response.error?.message || '发布失败'
+  try {
+    const published = await publishDraft(currentDraftId.value)
+    router.push(`/news/${published.id}`)
+  } catch (err) {
+    error.value = getApiErrorMessage(err, '发布失败')
+  } finally {
+    publishing.value = false
   }
-
-  publishing.value = false
 }
 
 onMounted(() => {

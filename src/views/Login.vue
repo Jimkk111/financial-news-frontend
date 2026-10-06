@@ -3,7 +3,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-vue-next'
-import { login, type LoginRequest } from '@/services/userService'
+import { login } from '@/api/auth'
+import type { LoginRequest } from '@/types'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -42,16 +44,11 @@ const handleSubmit = async (e: Event) => {
       password: password.value,
     }
 
-    const response = await login(loginRequest)
-
-    if (response.success && response.data) {
-      authStore.login(response.data.user)
-      router.push('/')
-    } else {
-      error.value = response.error?.message || '登录失败，请检查用户名和密码'
-    }
+    const { user } = await login(loginRequest)
+    authStore.login(user)
+    router.push('/')
   } catch (err) {
-    error.value = '登录失败，请稍后重试'
+    error.value = getApiErrorMessage(err, '登录失败，请检查用户名和密码')
     console.error(err)
   } finally {
     loading.value = false

@@ -2,7 +2,9 @@
 import { ref } from 'vue'
 import { NIcon, NSpin } from 'naive-ui'
 import { ImagePlus, X } from 'lucide-vue-next'
-import { uploadImage } from '@/services/newsEditorService'
+import { uploadImage } from '@/api/draft'
+import { validateUploadFile, IMAGE_UPLOAD_RULE } from '@/utils/file'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 interface Props {
   modelValue: string | null
@@ -25,17 +27,22 @@ const handleClick = () => {
 
 const uploadFile = async (file: File) => {
   error.value = ''
-  isUploading.value = true
 
-  const response = await uploadImage(file)
-
-  if (response.success && response.data) {
-    emit('update:modelValue', response.data.url)
-  } else {
-    error.value = response.error?.message || '上传失败'
+  const validationMessage = validateUploadFile(file, IMAGE_UPLOAD_RULE)
+  if (validationMessage) {
+    error.value = validationMessage
+    return
   }
 
-  isUploading.value = false
+  isUploading.value = true
+  try {
+    const { url } = await uploadImage(file)
+    emit('update:modelValue', url)
+  } catch (err) {
+    error.value = getApiErrorMessage(err, '上传失败')
+  } finally {
+    isUploading.value = false
+  }
 }
 
 const handleFileChange = async (event: Event) => {
