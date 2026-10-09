@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NIcon } from 'naive-ui'
-import { Bot, Home, User } from 'lucide-vue-next'
+import { Bot, Home, TrendingUp, User } from 'lucide-vue-next'
 
 interface Props {
   activeTab?: string
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 
 const navItems = [
   { id: 'home', label: '首页', icon: Home },
+  { id: 'market', label: '行情', icon: TrendingUp },
   { id: 'ai', label: 'AI助手', icon: Bot },
   { id: 'profile', label: '个人', icon: User },
 ]

@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
               '@tiptap/extension-youtube',
             ],
             'vendor-icons': ['lucide-vue-next'],
+            'vendor-echarts': ['echarts'],
           },
         },
       },
