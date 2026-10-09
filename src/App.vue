@@ -36,7 +36,7 @@ const themeOverrides = computed(() =>
         <n-notification-provider>
           <n-message-provider>
             <router-view v-slot="{ Component }">
-              <keep-alive :include="['Home']">
+              <keep-alive :include="['Home', 'Market']">
                 <component :is="Component" />
               </keep-alive>
             </router-view>

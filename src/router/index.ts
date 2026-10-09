@@ -10,6 +10,19 @@ const router = createRouter({
       component: () => import('../views/Home.vue'),
     },
     {
+      // 行情 Tab 页（无需登录，PRD 4.1）
+      path: '/market',
+      name: 'market',
+      component: () => import('../views/Market/index.vue'),
+    },
+    {
+      // 标的详情页：secType 必须随路径携带（同号异实红线，对接文档 §2.2），
+      // symbol 形如 600519.SH / 00700.HK / AAPL.US，单段参数可完整匹配
+      path: '/market/:secType(stock|index)/:symbol',
+      name: 'quoteDetail',
+      component: () => import('../views/QuoteDetail/index.vue'),
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('../views/Login.vue'),

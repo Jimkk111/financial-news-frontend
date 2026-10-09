@@ -47,6 +47,11 @@
   --nb-shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.05);
   --nb-shadow-md: rgba(15, 15, 15, 0.05) 0px 0px 0px 1px,
     rgba(15, 15, 15, 0.1) 0px 3px 6px, rgba(15, 15, 15, 0.2) 0px 9px 24px;
+
+  // 行情涨跌色（红涨绿跌，A 股惯例；与 utils/quote/chartTheme.ts 保持一致）
+  --quote-up: #d92e2e;
+  --quote-down: #0f7b52;
+  --quote-flat: #8c8c8c;
 }
 
 .dark {
@@ -92,4 +97,25 @@
   --nb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --nb-shadow-md: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px,
     rgba(0, 0, 0, 0.3) 0px 3px 6px, rgba(0, 0, 0, 0.4) 0px 9px 24px;
+
+  // 行情涨跌色（暗色；亮色值见 :root，与 utils/quote/chartTheme.ts 保持一致）
+  --quote-up: #ff5a5f;
+  --quote-down: #26b47a;
+  --quote-flat: #7a7a7a;
+}
+
+// ============================================================
+// 行情涨跌工具类：正红负绿零灰，三市场一致（PRD 5.2-1）
+// ============================================================
+
+.quote-up {
+  color: var(--quote-up) !important;
+}
+
+.quote-down {
+  color: var(--quote-down) !important;
+}
+
+.quote-flat {
+  color: var(--quote-flat) !important;
 }
