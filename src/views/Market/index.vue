@@ -4,7 +4,7 @@ import { RefreshCw } from 'lucide-vue-next'
 import { Header, BottomNav } from '@/components'
 import MarketTabs from './MarketTabs.vue'
 import IndexCards from './IndexCards.vue'
-import HotList from './HotList.vue'
+import StockList from './StockList.vue'
 import QuoteSearch from './QuoteSearch.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useQuoteStore } from '@/stores/quote'
@@ -56,7 +56,7 @@ function switchMarket(market: 'CN' | 'US' | 'HK') {
 
 const allFailed = computed(() => {
   const c = cache.value
-  return !!c && !!c.indicesError && !!c.hotError && !c.indices.length && !c.hot.length
+  return !!c && !!c.indicesError && !!c.stocksError && !c.indices.length && !c.stocks.length
 })
 
 async function retryAll() {
@@ -105,11 +105,16 @@ const handleTabChange = (tab: string) => {
           :error="cache?.indicesError ?? null"
           @retry="quoteStore.refreshSegment(activeMarket, 'indices')"
         />
-        <HotList
-          :stocks="cache?.hot ?? []"
-          :loading="!quoteStore.hasCache(activeMarket)"
-          :error="cache?.hotError ?? null"
-          @retry="quoteStore.refreshSegment(activeMarket, 'hot')"
+        <StockList
+          :key="activeMarket"
+          :stocks="cache?.stocks ?? []"
+          :loading="cache?.stocksLoading ?? true"
+          :error="cache?.stocksError ?? null"
+          :page="cache?.page ?? 1"
+          :page-size="cache?.pageSize ?? 50"
+          :total="cache?.total ?? 0"
+          @retry="quoteStore.refreshSegment(activeMarket, 'stocks')"
+          @page-change="quoteStore.refreshStocks(activeMarket, $event)"
         />
       </template>
     </main>

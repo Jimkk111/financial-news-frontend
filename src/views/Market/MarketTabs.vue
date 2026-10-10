@@ -37,6 +37,7 @@ function select(market: QuoteMarket) {
 
 .market-tabs {
   display: flex;
+  justify-content: center;
   gap: $sp-1;
   padding: 0 $sp-4 $sp-2;
 }

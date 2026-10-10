@@ -9,6 +9,7 @@ import type {
   QuoteSecType,
   QuoteSnapshotVO,
   QuoteTrendVO,
+  StockListVO,
 } from '@/types/quote'
 
 // ============================================================
@@ -53,6 +54,11 @@ export function getIndices(market: QuoteMarket): Promise<IndexListVO> {
 /** 热门标的列表（后端配置名单，约 20 只/市场） */
 export function getHotList(market: QuoteMarket, limit = 20): Promise<HotListVO> {
   return quoteGet<HotListVO>('/quotes/hot', { market, limit })
+}
+
+/** 股票列表（CN/HK/US；页码从 1 开始，默认每页 50 只） */
+export function getStockList(market: QuoteMarket, page = 1, pageSize = 50): Promise<StockListVO> {
+  return quoteGet<StockListVO>('/quotes/stocks', { market, page, pageSize })
 }
 
 /** 三市场混合搜索联想（空关键词/无结果返回 items: []，不报错） */
