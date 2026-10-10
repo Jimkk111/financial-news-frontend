@@ -16,6 +16,7 @@ import { addHistory } from '@/api/history'
 import { addFavorite, removeFavorite, checkFavorite } from '@/api/favorite'
 import { formatTime } from '@/utils/format'
 import ArticleContent from '@/components/content/ArticleContent.vue'
+import NewsSelection from '@/components/NewsSelection.vue'
 import { normalizeContent } from '@/utils/content/validateContent'
 import { useAuthStore } from '@/stores/auth'
 import type { NewsDetail as NewsType, NewsItem } from '@/types'
@@ -241,9 +242,9 @@ const handleRelatedClick = (id: number) => {
         </div>
 
         <!-- 新闻正文（块级 JSON 渲染，无 v-html） -->
-        <div class="detail__content">
+        <NewsSelection :key="news.id" class="detail__content">
           <ArticleContent :content="contentBlocks" />
-        </div>
+        </NewsSelection>
 
         <!-- 新闻标签 -->
         <div v-if="news.tags && news.tags.length > 0" class="detail__tags">

@@ -46,6 +46,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   const searchQuery = ref('')
   const sidebarOpen = ref(false)
   const isServiceHealthy = ref<boolean | null>(null)
+  const pendingNewsQuestion = ref('')
+
+  function queueNewsQuestion(content: string) {
+    pendingNewsQuestion.value = content.trim()
+  }
   // 联网搜索开关：跨会话记忆，随每条消息的流式请求下发
   const webSearchEnabled = ref(
     (() => {
@@ -154,10 +159,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   }
 
   function abortActiveStream() {
-    if (!activeStream) return
     streamEpoch++
-    activeStream.abort()
+    activeStream?.abort()
     activeStream = null
+    isSending.value = false
+    isLoading.value = false
   }
 
   function createNewSession() {
@@ -416,9 +422,9 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     } finally {
       if (epoch === streamEpoch) {
         activeStream = null
+        isSending.value = false
+        isLoading.value = false
       }
-      isSending.value = false
-      isLoading.value = false
     }
   }
 
@@ -461,9 +467,19 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   }
 
   async function init() {
+    // 划词提问只消费一次，优先开启新会话，避免历史加载覆盖新消息。
+    const newsQuestion = pendingNewsQuestion.value
+    pendingNewsQuestion.value = ''
+    if (newsQuestion) createNewSession()
     const healthy = await checkHealth()
     // 健康检查失败也尝试渲染列表（服务端不可达时回退本地缓存）
     await loadSessions()
+
+    if (newsQuestion) {
+      await sendMessage(newsQuestion)
+      if (!healthy) error.value = SERVICE_DOWN_BANNER
+      return
+    }
 
     if (!healthy) {
       error.value = SERVICE_DOWN_BANNER
@@ -506,6 +522,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     searchQuery,
     sidebarOpen,
     isServiceHealthy,
+    pendingNewsQuestion,
+    queueNewsQuestion,
     webSearchEnabled,
     setWebSearch,
     toggleWebSearch,

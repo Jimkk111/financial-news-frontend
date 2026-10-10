@@ -3,6 +3,7 @@ import { NIcon, NTag } from 'naive-ui'
 import { Clock } from 'lucide-vue-next'
 import { formatViews } from '@/utils/format'
 import type { Tag } from '@/types'
+import NewsSelection from './NewsSelection.vue'
 
 interface Props {
   id: number
@@ -20,10 +21,17 @@ withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   click: [id: number]
 }>()
+
 </script>
 
 <template>
-  <div class="nb-news-item" @click="emit('click', id)">
+  <NewsSelection
+    mode="item"
+    :news-id="id"
+    :news-title="title"
+    class="nb-news-item"
+    @click="emit('click', id)"
+  >
     <h3 class="nb-news-item__title">{{ title }}</h3>
 
     <div v-if="tags.length > 0" class="nb-news-item__tags">
@@ -41,7 +49,7 @@ const emit = defineEmits<{
       </span>
       <span class="nb-news-item__views">{{ formatViews(views) }} 阅读</span>
     </div>
-  </div>
+  </NewsSelection>
 </template>
 
 <style scoped lang="scss">
@@ -51,6 +59,7 @@ const emit = defineEmits<{
 .nb-news-item {
   padding: $sp-3 $sp-4;
   cursor: pointer;
+  user-select: none;
   background-color: var(--nb-surface);
   border-bottom: 1px solid var(--nb-divider);
   transition: background-color $dur-fast $ease;

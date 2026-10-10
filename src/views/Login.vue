@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-vue-next'
 import { login } from '@/api/auth'
@@ -9,6 +9,7 @@ import { getApiErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const username = ref('')
@@ -46,7 +47,7 @@ const handleSubmit = async (e: Event) => {
 
     const { user } = await login(loginRequest)
     authStore.login(user)
-    router.push('/')
+    router.push(route.query.redirect === '/ai' ? '/ai' : '/')
   } catch (err) {
     error.value = getApiErrorMessage(err, '登录失败，请检查用户名和密码')
     console.error(err)
