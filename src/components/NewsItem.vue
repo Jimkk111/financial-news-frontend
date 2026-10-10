@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { NIcon } from 'naive-ui'
+import { NIcon, NTag } from 'naive-ui'
 import { Clock } from 'lucide-vue-next'
 import { formatViews } from '@/utils/format'
+import type { Tag } from '@/types'
 
 interface Props {
   id: number
@@ -9,9 +10,12 @@ interface Props {
   source: string | null
   time: string
   views: number
+  tags?: Tag[]
 }
 
-const props = defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  tags: () => [],
+})
 
 const emit = defineEmits<{
   click: [id: number]
@@ -21,6 +25,12 @@ const emit = defineEmits<{
 <template>
   <div class="nb-news-item" @click="emit('click', id)">
     <h3 class="nb-news-item__title">{{ title }}</h3>
+
+    <div v-if="tags.length > 0" class="nb-news-item__tags">
+      <n-tag v-for="tag in tags" :key="tag.id" size="small" round :bordered="false">
+        {{ tag.name }}
+      </n-tag>
+    </div>
 
     <div class="nb-news-item__meta">
       <span class="nb-news-item__source">{{ source }}</span>
@@ -60,6 +70,20 @@ const emit = defineEmits<{
     color: var(--nb-text);
     margin-bottom: $sp-2;
     @include line-clamp(2);
+  }
+
+  &__tags {
+    @include flex(row, flex-start, center, $sp-2);
+    flex-wrap: wrap;
+    margin-bottom: $sp-2;
+    overflow-wrap: anywhere;
+
+    :deep(.n-tag) {
+      max-width: 100%;
+      height: auto;
+      min-height: 22px;
+      white-space: normal;
+    }
   }
 
   &__meta {

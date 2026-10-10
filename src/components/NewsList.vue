@@ -20,6 +20,7 @@ interface LocalNewsItem {
   source: string | null
   time: string
   views: number
+  tags: NewsItemType['tags']
 }
 
 const props = defineProps<Props>()
@@ -61,6 +62,7 @@ const fetchNews = async () => {
       source: news.source,
       time: formatTime(news.publishTime),
       views: news.views,
+      tags: news.tags ?? [],
     }))
 
     if (page.value === 1) {
@@ -173,7 +175,7 @@ onUnmounted(() => {
         <DynamicScrollerItem
           :item="item"
           :active="active"
-          :size-dependencies="[item.title]"
+          :size-dependencies="[item.title, item.tags]"
         >
           <NewsItem
             :id="item.id"
@@ -181,6 +183,7 @@ onUnmounted(() => {
             :source="item.source"
             :time="item.time"
             :views="item.views"
+            :tags="item.tags"
             @click="emit('newsClick', $event)"
           />
         </DynamicScrollerItem>
