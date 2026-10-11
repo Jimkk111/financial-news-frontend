@@ -96,7 +96,7 @@ function handleQuickQuestion(question: string) {
           v-for="(message, index) in store.messages"
           :key="message.id"
           :message="message"
-          :can-regenerate="!store.isSending && index === store.messages.length - 1 && message.role === 'assistant'"
+          :can-regenerate="!store.isSending && !store.isLoading && index === store.messages.length - 1 && message.role === 'assistant' && !!message.generationId && ['completed', 'cancelled', 'failed'].includes(message.generationStatus || '')"
           @regenerate="store.regenerate()"
         />
       </div>

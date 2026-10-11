@@ -9,6 +9,12 @@ vi.mock('../request', () => ({
 beforeEach(() => vi.resetAllMocks())
 
 describe('AI API 定义', () => {
+  it('重试只携带固定任务 ID 和幂等键，不传请求体', async () => {
+    const controller = new AbortController()
+    await aiApi.retryGeneration('g-old', 'retry-key', controller.signal)
+    expect(request.post).toHaveBeenCalledWith('/ai/generations/g-old/retry', undefined,
+      { headers: { 'Idempotency-Key': 'retry-key' }, signal: controller.signal })
+  })
   it('任务创建携带幂等键，订阅、快照与取消使用独立接口', async () => {
     const data = { messages: [{ role: 'user' as const, content: '问题' }] }
     const controller = new AbortController()

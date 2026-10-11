@@ -177,16 +177,69 @@ describe('AI 会话持久任务接入', () => {
     expect(store.isSending).toBe(false)
   })
 
-  it('重新生成保留上一轮消息并使用新键', async () => {
+  it('重试保留用户消息，成功后替换气泡；再次重试使用新任务和新键', async () => {
     const store = useAiSessionStore()
     await store.sendMessage('问题')
-    update(0, snapshot({ status: 'completed', content: '旧答' }), 'complete')
+    update(0, snapshot({ status: 'completed', content: '旧答', reasoning: '旧思考', sources: [{ url: 'https://old.com', title: '旧来源' }], lastSeq: 8 }), 'complete')
+    store.messages[1]!.reasoningSeconds = 10
     active[0]!.resolve(active[0]!.record.snapshot)
     await flush()
     await store.regenerate()
-    expect(store.messages).toHaveLength(4)
+    expect(store.messages).toHaveLength(2)
     expect(store.messages[1]!.content).toBe('旧答')
+    expect(active[1]!.record.retryOf).toBe('g1')
+    await store.regenerate()
+    expect(active).toHaveLength(2)
+    update(1, snapshot({ generationId: 'g2', messageId: 124, status: 'queued' }), 'connecting')
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[1]).toMatchObject({ content: '', generationId: 'g2', messageId: 124, lastSeq: 0 })
+    expect(store.messages[1]!.reasoning).toBeUndefined()
+    expect(store.messages[1]!.reasoningSeconds).toBeUndefined()
+    expect(store.messages[1]!.sources).toEqual([])
+    update(1, snapshot({ generationId: 'g2', messageId: 124, status: 'completed', content: '新答' }), 'complete')
+    active[1]!.resolve(active[1]!.record.snapshot)
+    await flush()
+    await store.regenerate()
+    expect(active[2]!.record.retryOf).toBe('g2')
+    expect(active[2]!.record.key).not.toBe(active[1]!.record.key)
     expect(active[1]!.record.key).not.toBe(active[0]!.record.key)
+  })
+
+  it('重试明确失败保留原气泡，后续点击创建新操作', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot({ status: 'cancelled', content: '原答', reasoning: '原思考' }), 'complete')
+    const original = JSON.parse(JSON.stringify(store.messages))
+    await store.regenerate()
+    active[1]!.callbacks.onError(new ApiError('409', '不是最后一轮'))
+    active[1]!.resolve()
+    await flush()
+    expect(JSON.parse(JSON.stringify(store.messages))).toEqual(original)
+    expect(store.isSending).toBe(false)
+    await store.regenerate()
+    expect(active[2]!.record.retryOf).toBe('g1')
+    expect(active[2]!.record.key).not.toBe(active[1]!.record.key)
+  })
+
+  it('刷新时历史已替换回复，不插回旧气泡或重复订阅', async () => {
+    const pending: GenerationRecord = {
+      key: 'retry-key', retryOf: 'g-old', request: { sessionId: 's1', messages: [] },
+      userMessageId: '', assistantMessageId: 'old-ui', createdAt: new Date().toISOString(),
+      cancelPending: false, connection: 'reconnecting',
+      previousReply: { id: 'old-ui', role: 'assistant', content: '旧答', generationId: 'g-old', generationStatus: 'completed', timestamp: new Date(), status: 'complete' },
+    }
+    vi.mocked(service.readGenerationRecords).mockReturnValue([pending])
+    vi.mocked(service.getSessionMessages).mockResolvedValue([
+      { role: 'user', content: '问题' },
+      { role: 'assistant', content: '', generationId: 'g-new', status: 'queued', lastSeq: 0, messageId: 124 },
+    ])
+    const store = useAiSessionStore()
+    await store.init()
+    expect(active).toHaveLength(1)
+    expect(store.messages).toHaveLength(2)
+    update(0, snapshot({ generationId: 'g-new', messageId: 124, status: 'queued' }), 'connecting')
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[1]!.generationId).toBe('g-new')
   })
 
   it('非终态任务阻止删除会话', async () => {

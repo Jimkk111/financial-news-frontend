@@ -67,6 +67,10 @@ function toggleReasoning() {
 // ---- 联网搜索引用来源 ----
 const sourcesList = computed(() => props.message.sources ?? [])
 const hasSources = computed(() => sourcesList.value.length > 0)
+const sourcesExpanded = ref(false)
+watch(() => props.message.generationId, () => {
+  sourcesExpanded.value = false
+})
 
 // 受理后、首个增量前：来源/思考链/正文均未到达的等待态，显示「思考中」
 const isWaiting = computed(
@@ -160,33 +164,50 @@ function handleRegenerate() {
         </div>
 
         <!-- 联网搜索引用来源：卡片编号与正文 [n] 引用对应，点击新窗口打开 -->
-        <div v-if="!isUser && hasSources" class="bubble__sources">
-          <a
-            v-for="(source, index) in sourcesList"
-            :key="`${index}-${source.url}`"
-            :href="source.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="bubble__source"
-            :title="source.summary || source.title"
+        <div v-if="!isUser && hasSources" class="bubble__sources-panel">
+          <button
+            type="button"
+            class="bubble__reasoning-toggle"
+            :aria-expanded="sourcesExpanded"
+            @click="sourcesExpanded = !sourcesExpanded"
           >
-            <span class="bubble__source-index">{{ index + 1 }}</span>
-            <img
-              v-if="source.logoUrl && !brokenLogos.has(source.logoUrl)"
-              :src="source.logoUrl"
-              class="bubble__source-logo"
-              alt=""
-              @error="handleLogoError(source.logoUrl!)"
+            <n-icon :component="Globe" :size="13" />
+            <span>搜索结果（{{ sourcesList.length }}）</span>
+            <n-icon
+              class="bubble__reasoning-chevron"
+              :class="{ 'bubble__reasoning-chevron--open': sourcesExpanded }"
+              :component="ChevronDown"
+              :size="13"
             />
-            <n-icon v-else :component="Globe" :size="14" class="bubble__source-icon" />
-            <span class="bubble__source-info">
-              <span class="bubble__source-title">{{ source.title }}</span>
-              <span class="bubble__source-site">
-                {{ source.siteName || sourceHost(source.url) }}
-                <template v-if="source.publishTime"> · {{ source.publishTime }}</template>
+          </button>
+          <div v-show="sourcesExpanded" class="bubble__sources">
+            <a
+              v-for="(source, index) in sourcesList"
+              :key="`${index}-${source.url}`"
+              :href="source.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="bubble__source"
+              :title="source.summary || source.title"
+            >
+              <span class="bubble__source-index">{{ index + 1 }}</span>
+              <img
+                v-if="source.logoUrl && !brokenLogos.has(source.logoUrl)"
+                :src="source.logoUrl"
+                class="bubble__source-logo"
+                alt=""
+                @error="handleLogoError(source.logoUrl!)"
+              />
+              <n-icon v-else :component="Globe" :size="14" class="bubble__source-icon" />
+              <span class="bubble__source-info">
+                <span class="bubble__source-title">{{ source.title }}</span>
+                <span class="bubble__source-site">
+                  {{ source.siteName || sourceHost(source.url) }}
+                  <template v-if="source.publishTime"> · {{ source.publishTime }}</template>
+                </span>
               </span>
-            </span>
-          </a>
+            </a>
+          </div>
         </div>
 
         <!-- 等待态：受理后首个增量（来源/思考/正文）到达前 -->
@@ -343,11 +364,17 @@ function handleRegenerate() {
     }
   }
 
+  &__sources-panel {
+    margin-bottom: $sp-2;
+    background-color: var(--nb-hover);
+    border-radius: $radius-md;
+  }
+
   &__sources {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: $sp-2;
-    margin-bottom: $sp-2;
+    padding: 0 $sp-3 $sp-3;
   }
 
   &__source {

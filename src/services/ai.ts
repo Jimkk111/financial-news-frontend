@@ -115,9 +115,12 @@ export function followGeneration(
           if (!record.snapshot) {
             record.connection = record.cancelPending ? 'stop_pending' : 'creating'
             publish()
-            const created = await aiApi.createGeneration(record.request, record.key, controller.signal)
+            const created = record.retryOf
+              ? await aiApi.retryGeneration(record.retryOf, record.key, controller.signal)
+              : await aiApi.createGeneration(record.request, record.key, controller.signal)
             // 即使用户刚切换会话，也先保存已接受的任务 ID，避免下次误创建。
-            record.snapshot = { ...created, content: '', reasoning: '', sources: [], errorCode: null }
+            record.snapshot = { ...created, lastSeq: record.retryOf ? 0 : created.lastSeq, content: '', reasoning: '', sources: [], errorCode: null }
+            record.startFromZero = !!record.retryOf
             saveGenerationRecord(owner, record)
             if (detached) return undefined
             callbacks.onUpdate(record)
@@ -134,14 +137,16 @@ export function followGeneration(
           record.connection = record.snapshot.status === 'cancel_requested' ? 'stopping' : 'connecting'
           publish()
           // 重连总是先用事务快照替换内容和游标，再订阅未读事件。
-          const snapshot = await aiApi.getGeneration(record.snapshot.generationId, controller.signal)
+          const snapshot = record.startFromZero ? record.snapshot :
+            await aiApi.getGeneration(record.snapshot.generationId, controller.signal)
           if (detached) return undefined
           adopt(snapshot)
-          if (isGenerationTerminal(snapshot.status)) return finish()
+          if (!record.startFromZero && isGenerationTerminal(snapshot.status)) return finish()
           const response = await aiApi.subscribeGeneration(snapshot.generationId, snapshot.lastSeq, controller.signal)
           if (detached) { controller.abort(); return undefined }
           const reader = response.body?.getReader()
           if (!reader) throw new ApiError('500', '无法读取任务进度')
+          record.startFromZero = false
           record.connection = snapshot.status === 'cancel_requested' ? 'stopping' : 'connected'
           publish()
           const decoder = new TextDecoder()

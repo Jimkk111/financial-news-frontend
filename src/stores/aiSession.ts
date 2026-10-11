@@ -58,7 +58,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     if (record.connection === 'offline') return '网络已断开，联网后会自动恢复对话'
     if (record.connection === 'reconnecting') return '连接中断，正在恢复对话…'
     if (isStopping.value) return '正在停止，等待服务器确认…'
-    if (record.connection === 'creating') return '正在提交提问…'
+    if (record.connection === 'creating') return record.retryOf ? '正在提交重试…' : '正在提交提问…'
     return ''
   })
   const canRetryConnection = computed(() => currentRecord.value?.connection === 'error')
@@ -141,6 +141,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
 
   function displayRecord(record: GenerationRecord) {
     const snapshot = record.snapshot
+    if (snapshot && Object.values(records.value).some(other => other.key !== record.key && other.retryOf === snapshot.generationId)) return
     const belongs = draftTaskKey.value === record.key ||
       (!!currentSessionId.value && (snapshot?.sessionId || record.request.sessionId) === currentSessionId.value)
     if (!belongs) return
@@ -150,8 +151,15 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       localStorage.setItem(lastSessionKey(), snapshot.sessionId)
     }
     let ai = messages.value.find(message => message.id === record.assistantMessageId ||
-      (snapshot && message.generationId === snapshot.generationId))
+      (snapshot && message.generationId === snapshot.generationId) ||
+      (record.retryOf && message.generationId === record.retryOf))
     if (!ai) {
+      if (record.retryOf && record.previousReply && !snapshot) {
+        // 历史可能已返回服务端替换后的回复，不能再插入旧气泡。
+        if (messages.value.length) return
+        messages.value.push({ ...record.previousReply, timestamp: new Date(record.previousReply.timestamp) })
+        return
+      }
       const question = [...record.request.messages].reverse().find(message => message.role === 'user')
       const last = messages.value[messages.value.length - 1]
       if (question && !messages.value.some(message => message.id === record.userMessageId) &&
@@ -172,6 +180,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       ai.sources = [...displayed.sources]
       ai.lastSeq = displayed.lastSeq
       ai.generationId = snapshot.generationId
+      ai.messageId = snapshot.messageId
+      ai.reasoningSeconds = undefined
       ai.generationStatus = snapshot.status
       ai.errorCode = snapshot.errorCode
       ai.status = terminal || frozen ? 'complete' : 'streaming'
@@ -220,7 +230,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           records.value = nextRecords
           if (draftTaskKey.value === record.key) draftTaskKey.value = null
           const ai = messages.value.find(message => message.id === record.assistantMessageId)
-          if (ai) { ai.status = 'complete'; ai.generationStatus = 'failed' }
+          if (ai && !record.retryOf) { ai.status = 'complete'; ai.generationStatus = 'failed' }
         }
       },
     })
@@ -263,6 +273,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       if (epoch !== viewEpoch) return
       messages.value = history.map((msg, index) => ({
         id: msg.messageId != null ? String(msg.messageId) : sessionId + '-' + index,
+        messageId: msg.messageId,
         role: msg.role, content: msg.content, reasoning: msg.reasoning, sources: msg.sources,
         generationId: msg.generationId, generationStatus: msg.status, lastSeq: msg.lastSeq,
         errorCode: msg.errorCode,
@@ -271,6 +282,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       for (const msg of history) {
         if (msg.role !== 'assistant' || !msg.generationId || !msg.status || isGenerationTerminal(msg.status)) continue
         if (Object.values(records.value).some(record => record.snapshot?.generationId === msg.generationId)) continue
+        if (Object.values(records.value).some(record => record.retryOf && !record.snapshot && record.request.sessionId === sessionId)) continue
         const record: GenerationRecord = {
           key: 'recovered:' + msg.generationId, request: { sessionId, messages: [] },
           userMessageId: '', assistantMessageId: msg.messageId != null ? String(msg.messageId) : createMessageId(),
@@ -355,10 +367,22 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   }
 
   async function regenerate() {
-    if (isSending.value) return
-    const lastQuestion = [...messages.value].reverse().find(msg => msg.role === 'user')
-    // 后端会保存新一轮问答，保留上一轮消息并使用新幂等键。
-    if (lastQuestion) await sendMessage(lastQuestion.content)
+    if (isSending.value || isLoading.value) return
+    if (!owner.value) { needsLogin.value = true; return }
+    const reply = messages.value[messages.value.length - 1]
+    if (!reply || reply.role !== 'assistant' || !reply.generationId ||
+      !reply.generationStatus || !isGenerationTerminal(reply.generationStatus) || !currentSessionId.value) return
+    const record: GenerationRecord = {
+      key: createMessageId(), retryOf: reply.generationId,
+      request: { sessionId: currentSessionId.value, messages: [] },
+      userMessageId: '', assistantMessageId: reply.id,
+      previousReply: JSON.parse(JSON.stringify(reply)) as Message,
+      createdAt: new Date().toISOString(), cancelPending: false, connection: 'creating',
+    }
+    try { saveGenerationRecord(owner.value, record) }
+    catch { toast.error('无法保存重试操作，请释放浏览器存储空间后重试'); return }
+    error.value = null
+    attachRecord(record)
   }
 
   function clearError() { error.value = null }

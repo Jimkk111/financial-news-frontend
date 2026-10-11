@@ -56,3 +56,7 @@ export function subscribeGeneration(id: string, afterSeq: number, signal?: Abort
 export function cancelGeneration(id: string, signal?: AbortSignal): Promise<GenerationSnapshot> {
   return post(`/ai/generations/${id}/cancel`, undefined, { signal })
 }
+
+export function retryGeneration(id: string, key: string, signal?: AbortSignal): Promise<GenerationCreated> {
+  return post(`/ai/generations/${id}/retry`, undefined, { headers: { 'Idempotency-Key': key }, signal })
+}

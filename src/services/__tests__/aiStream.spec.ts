@@ -5,7 +5,7 @@ import { followGeneration, readGenerationRecords, saveGenerationRecord } from '.
 import type { GenerationRecord, GenerationSnapshot } from '@/types'
 
 vi.mock('@/api/ai', () => ({
-  createGeneration: vi.fn(), getGeneration: vi.fn(), subscribeGeneration: vi.fn(), cancelGeneration: vi.fn(),
+  createGeneration: vi.fn(), retryGeneration: vi.fn(), getGeneration: vi.fn(), subscribeGeneration: vi.fn(), cancelGeneration: vi.fn(),
   createSession: vi.fn(), getSessions: vi.fn(), getSessionMessages: vi.fn(),
   deleteSession: vi.fn(), updateSessionTitle: vi.fn(), chatCompletion: vi.fn(), healthCheck: vi.fn(),
 }))
@@ -41,6 +41,39 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('持久生成任务', () => {
+  it('重试网络重发固定 URL 与键，幂等响应游标变化仍从零订阅', async () => {
+    vi.useFakeTimers()
+    const task = record()
+    task.retryOf = 'g-old'
+    task.request = { sessionId: 's1', messages: [] }
+    vi.mocked(api.retryGeneration).mockRejectedValueOnce(new ApiError('408', '超时'))
+      .mockResolvedValue({ ...created, status: 'completed', lastSeq: 2, retryOf: 'g-old' })
+    vi.mocked(api.subscribeGeneration).mockResolvedValue(sse([event('delta', 1, { content: '新答' }), event('completed', 2)]))
+    vi.mocked(api.getGeneration).mockResolvedValue(snapshot({ status: 'completed', content: '新答', lastSeq: 2 }))
+    const handle = followGeneration('owner', task, { onUpdate: vi.fn(), onError: vi.fn() })
+    await flush()
+    expect(readGenerationRecords('owner')[0]).toMatchObject({ retryOf: 'g-old', key: 'stable-key' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect((await handle.promise)?.content).toBe('新答')
+    expect(api.retryGeneration).toHaveBeenCalledTimes(2)
+    for (const call of vi.mocked(api.retryGeneration).mock.calls) expect(call.slice(0, 2)).toEqual(['g-old', 'stable-key'])
+    expect(api.createGeneration).not.toHaveBeenCalled()
+    expect(api.subscribeGeneration).toHaveBeenCalledWith('g1', 0, expect.any(AbortSignal))
+    expect(api.getGeneration).toHaveBeenCalledOnce()
+  })
+
+  it('恢复未确认的重试仍调用原任务重试接口', async () => {
+    const task = record()
+    task.retryOf = 'g-old'
+    saveGenerationRecord('owner', task)
+    vi.mocked(api.retryGeneration).mockResolvedValue(created)
+    vi.mocked(api.subscribeGeneration).mockResolvedValue(sse([event('completed', 1)]))
+    vi.mocked(api.getGeneration).mockResolvedValue(snapshot({ status: 'completed', lastSeq: 1 }))
+    await followGeneration('owner', readGenerationRecords('owner')[0]!, { onUpdate: vi.fn(), onError: vi.fn() }).promise
+    expect(api.retryGeneration).toHaveBeenCalledWith('g-old', 'stable-key', expect.any(AbortSignal))
+    expect(api.createGeneration).not.toHaveBeenCalled()
+  })
+
   it('创建明确返回 409 时停止重试并清除待创建记录', async () => {
     vi.useFakeTimers()
     vi.mocked(api.createGeneration).mockRejectedValue(new ApiError('409', '当前会话仍在生成'))

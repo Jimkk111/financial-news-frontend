@@ -58,6 +58,7 @@ export interface GenerationCreated {
   messageId: number
   status: GenerationStatus
   lastSeq: number
+  retryOf?: string
 }
 
 export interface GenerationSnapshot extends GenerationCreated {
@@ -80,6 +81,10 @@ export interface GenerationRecord {
   cancelPending: boolean
   connection: GenerationConnection
   error?: string
+  /** 重试操作固定的原任务 ID，网络重发时不得改变。 */
+  retryOf?: string
+  previousReply?: Message
+  startFromZero?: boolean
 }
 
 export interface GenerationHandle {
@@ -95,6 +100,7 @@ export type MessageStatus = 'streaming' | 'complete'
 
 export interface Message {
   id: string
+  messageId?: number
   role: 'user' | 'assistant'
   content: string
   /** 思考链增量拼接结果，非思考型模型为空 */
