@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # 手动部署也必须先完成 CI；运行时选择 master 分支
+  workflow_dispatch:
   # push 不限制分支，所有分支推送均触发；PR 仅在目标为 master 时触发
   push:
     paths-ignore:
