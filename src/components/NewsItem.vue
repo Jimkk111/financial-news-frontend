@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { NIcon } from 'naive-ui'
+import { NIcon, NTag } from 'naive-ui'
 import { Clock } from 'lucide-vue-next'
 import { formatViews } from '@/utils/format'
+import type { Tag } from '@/types'
+import NewsSelection from './NewsSelection.vue'
 
 interface Props {
   id: number
@@ -9,18 +11,34 @@ interface Props {
   source: string | null
   time: string
   views: number
+  tags?: Tag[]
 }
 
-const props = defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  tags: () => [],
+})
 
 const emit = defineEmits<{
   click: [id: number]
 }>()
+
 </script>
 
 <template>
-  <div class="nb-news-item" @click="emit('click', id)">
+  <NewsSelection
+    mode="item"
+    :news-id="id"
+    :news-title="title"
+    class="nb-news-item"
+    @click="emit('click', id)"
+  >
     <h3 class="nb-news-item__title">{{ title }}</h3>
+
+    <div v-if="tags.length > 0" class="nb-news-item__tags">
+      <n-tag v-for="tag in tags" :key="tag.id" size="small" round :bordered="false">
+        {{ tag.name }}
+      </n-tag>
+    </div>
 
     <div class="nb-news-item__meta">
       <span class="nb-news-item__source">{{ source }}</span>
@@ -31,7 +49,7 @@ const emit = defineEmits<{
       </span>
       <span class="nb-news-item__views">{{ formatViews(views) }} 阅读</span>
     </div>
-  </div>
+  </NewsSelection>
 </template>
 
 <style scoped lang="scss">
@@ -41,6 +59,7 @@ const emit = defineEmits<{
 .nb-news-item {
   padding: $sp-3 $sp-4;
   cursor: pointer;
+  user-select: none;
   background-color: var(--nb-surface);
   border-bottom: 1px solid var(--nb-divider);
   transition: background-color $dur-fast $ease;
@@ -60,6 +79,20 @@ const emit = defineEmits<{
     color: var(--nb-text);
     margin-bottom: $sp-2;
     @include line-clamp(2);
+  }
+
+  &__tags {
+    @include flex(row, flex-start, center, $sp-2);
+    flex-wrap: wrap;
+    margin-bottom: $sp-2;
+    overflow-wrap: anywhere;
+
+    :deep(.n-tag) {
+      max-width: 100%;
+      height: auto;
+      min-height: 22px;
+      white-space: normal;
+    }
   }
 
   &__meta {

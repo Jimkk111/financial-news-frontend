@@ -66,6 +66,16 @@ export interface HotListVO {
   stocks: QuoteSnapshotVO[]
 }
 
+/** 三市场分页股票列表 */
+export interface StockListVO {
+  market: QuoteMarket
+  delayed: boolean
+  stocks: QuoteSnapshotVO[]
+  page: number
+  pageSize: number
+  total: number
+}
+
 export interface QuoteSearchItemVO {
   secType: QuoteSecType
   symbol: string

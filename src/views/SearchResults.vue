@@ -106,6 +106,7 @@ onMounted(performSearch)
           :source="item.source"
           :time="formatTime(item.publishTime)"
           :views="item.views"
+          :tags="item.tags"
           @click="handleNewsClick"
         />
       </div>

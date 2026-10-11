@@ -26,9 +26,9 @@ const percentClass = (pct: number | null) =>
 
 <template>
   <div class="index-cards">
-    <template v-if="loading && !indices.length">
-      <div v-for="i in 4" :key="i" class="index-cards__skeleton" />
-    </template>
+    <div v-if="loading && !indices.length" class="index-cards__scroll" aria-busy="true" aria-label="指数加载中">
+      <div v-for="i in 4" :key="i" class="index-cards__card index-cards__skeleton" />
+    </div>
 
     <div v-else-if="error && !indices.length" class="index-cards__error">
       <span>{{ error }}</span>
@@ -75,6 +75,7 @@ const percentClass = (pct: number | null) =>
 .index-cards__card {
   flex: 0 0 auto;
   min-width: 108px;
+  height: 86px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -93,6 +94,7 @@ const percentClass = (pct: number | null) =>
 
 .index-cards__name {
   font-size: 12px;
+  line-height: 18px;
   color: var(--nb-text-secondary);
   @include ellipsis;
   max-width: 96px;
@@ -101,21 +103,20 @@ const percentClass = (pct: number | null) =>
 .index-cards__price,
 .index-cards__pct {
   font-size: 15px;
+  line-height: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .index-cards__pct {
   font-size: 12px;
+  line-height: 18px;
   font-weight: 500;
 }
 
 .index-cards__skeleton {
-  flex: 0 0 auto;
   width: 108px;
-  height: 64px;
-  border-radius: 10px;
-  background: var(--nb-surface-subtle);
+  pointer-events: none;
   animation: pulse 1.2s ease-in-out infinite;
 }
 

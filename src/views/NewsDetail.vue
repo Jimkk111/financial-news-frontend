@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, NPopover, NSpin, NTag, useMessage } from 'naive-ui'
 import {
@@ -16,6 +16,7 @@ import { addHistory } from '@/api/history'
 import { addFavorite, removeFavorite, checkFavorite } from '@/api/favorite'
 import { formatTime } from '@/utils/format'
 import ArticleContent from '@/components/content/ArticleContent.vue'
+import NewsSelection from '@/components/NewsSelection.vue'
 import { normalizeContent } from '@/utils/content/validateContent'
 import { useAuthStore } from '@/stores/auth'
 import type { NewsDetail as NewsType, NewsItem } from '@/types'
@@ -25,7 +26,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 const message = useMessage()
 
-const newsId = ref(Number(route.params.id))
+const newsId = computed(() => Number(route.params.id))
 const uid = authStore.user?.uid || ''
 
 const news = ref<NewsType | null>(null)
@@ -142,6 +143,10 @@ const fetchNewsDetail = async () => {
   try {
     loading.value = true
     error.value = null
+    news.value = null
+    relatedNews.value = []
+    isFavorited.value = false
+    menuOpen.value = false
     const res = await getNewsDetail(newsId.value)
     news.value = res
 
@@ -163,11 +168,7 @@ const fetchNewsDetail = async () => {
   }
 }
 
-watch(() => newsId.value, fetchNewsDetail)
-
-onMounted(() => {
-  fetchNewsDetail()
-})
+watch(newsId, fetchNewsDetail, { immediate: true })
 
 onUnmounted(() => {
   menuOpen.value = false
@@ -241,9 +242,9 @@ const handleRelatedClick = (id: number) => {
         </div>
 
         <!-- 新闻正文（块级 JSON 渲染，无 v-html） -->
-        <div class="detail__content">
+        <NewsSelection :key="news.id" class="detail__content">
           <ArticleContent :content="contentBlocks" />
-        </div>
+        </NewsSelection>
 
         <!-- 新闻标签 -->
         <div v-if="news.tags && news.tags.length > 0" class="detail__tags">

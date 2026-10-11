@@ -31,6 +31,7 @@ import {
   getSessions,
   getSessionMessages,
   streamChat,
+  healthCheck,
 } from '@/api/ai'
 
 const createSessionMock = vi.mocked(createSession)
@@ -87,6 +88,51 @@ describe('useAiSessionStore', () => {
   })
 
   describe('sendMessage', () => {
+    it('划词提问在新会话发送，跳过历史恢复且再次进入不重复发送', async () => {
+      vi.mocked(healthCheck).mockResolvedValue({ status: 'ok' } as Awaited<ReturnType<typeof healthCheck>>)
+      createSessionMock.mockResolvedValue({ sessionId: 'news-session' })
+      localStorage.setItem('aiAssistantLastSessionId', 'old-session')
+      const stream = createStreamHandle()
+      stream.inject()
+      const store = useAiSessionStore()
+      store.currentSessionId = 'old-session'
+      store.queueNewsQuestion('  新闻选中的内容  ')
+
+      const initializing = store.init()
+      for (let i = 0; i < 5; i++) await flushMicrotasks()
+      expect(getSessionMessagesMock).not.toHaveBeenCalled()
+      expect(streamChatMock).toHaveBeenCalledWith([
+        { role: 'user', content: '新闻选中的内容' },
+      ], expect.objectContaining({ sessionId: 'news-session' }))
+      expect(store.pendingNewsQuestion).toBe('')
+      stream.resolve({ content: '解读', reasoning: '', sources: [], aborted: false })
+      await initializing
+
+      getSessionMessagesMock.mockResolvedValue([])
+      await store.init()
+      expect(streamChatMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('新会话创建期间重置，旧请求不会占用发送状态或覆盖新消息', async () => {
+      let resolveOld: (value: { sessionId: string }) => void = () => {}
+      createSessionMock.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      const stream = createStreamHandle()
+      stream.inject()
+      const store = useAiSessionStore()
+      const oldSending = store.sendMessage('旧问题')
+      store.createNewSession()
+      createSessionMock.mockResolvedValue({ sessionId: 'news-session' })
+      const newSending = store.sendMessage('新闻选中的内容')
+      await flushMicrotasks()
+      resolveOld({ sessionId: 'old-session' })
+      await oldSending
+      expect(store.isSending).toBe(true)
+      expect(store.currentSessionId).toBe('news-session')
+      expect(store.messages[0]!.content).toBe('新闻选中的内容')
+      stream.resolve({ content: '解读', reasoning: '', sources: [], aborted: false })
+      await newSending
+    })
+
     it('流式完成后消息落位、会话 ID 更新', async () => {
       createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
       const stream = createStreamHandle()
