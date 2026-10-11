@@ -206,6 +206,10 @@ function handleRegenerate() {
       </div>
 
       <div class="bubble__footer">
+        <span v-if="message.generationStatus === 'cancelled'" class="bubble__time">已停止</span>
+        <span v-else-if="message.generationStatus === 'failed'" class="bubble__time">
+          {{ message.errorCode === 'WORKER_INTERRUPTED' ? '生成中断，已保留部分内容' : '生成失败，已保留部分内容' }}
+        </span>
         <span class="bubble__time">{{ formattedTime }}</span>
 
         <template v-if="!isUser && !isStreaming">

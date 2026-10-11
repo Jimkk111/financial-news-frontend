@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { extractSseEvents } from '../sse'
+import { extractSseEvents, extractSseFrames } from '../sse'
+
+describe('extractSseFrames', () => {
+  it('保留命名事件和游标，初始化和心跳使用默认事件', () => {
+    const result = extractSseFrames('data: {"heartbeat":true}\n\nid: 43\nevent: delta\ndata: {"content":"正文","seq":43}\n\n')
+    expect(result.events).toEqual([
+      { event: 'message', data: '{"heartbeat":true}' },
+      { event: 'delta', id: '43', data: '{"content":"正文","seq":43}' },
+    ])
+    expect(result.rest).toBe('')
+  })
+
+  it('空行边界跨分片时保留完整事件直到下一片', () => {
+    const first = extractSseFrames('event: cancelled\r\nid: 9\r\ndata: {"seq":9}\r\n\r')
+    expect(first.events).toEqual([])
+    const second = extractSseFrames(first.rest + '\n')
+    expect(second.events).toEqual([{ event: 'cancelled', id: '9', data: '{"seq":9}' }])
+    expect(second.rest).toBe('')
+  })
+
+  it('忽略注释，合并多行数据，end 不需要游标', () => {
+    const result = extractSseFrames(': keep alive\n\nevent: end\ndata: {\ndata: "status":"completed"}\n\n')
+    expect(result.events).toEqual([{ event: 'end', data: '{\n"status":"completed"}' }])
+  })
+})
 
 describe('extractSseEvents', () => {
   it('解析完整的单行 data 事件', () => {

@@ -51,6 +51,17 @@ describe('normalizeSessions', () => {
 })
 
 describe('normalizeChatMessages', () => {
+  it('保留空任务消息、恢复游标和失败原因', () => {
+    const messages = normalizeChatMessages([
+      { id: 123, role: 'assistant', content: '', generationId: 'g1', status: 'queued', lastSeq: 0 },
+      { messageId: 124, role: 'assistant', content: '', generationId: 'g2', status: 'failed', lastSeq: 7, errorCode: 'WORKER_INTERRUPTED' },
+    ])
+    expect(messages).toEqual([
+      { role: 'assistant', content: '', generationId: 'g1', status: 'queued', lastSeq: 0, messageId: 123, errorCode: null },
+      { role: 'assistant', content: '', generationId: 'g2', status: 'failed', lastSeq: 7, messageId: 124, errorCode: 'WORKER_INTERRUPTED' },
+    ])
+  })
+
   it('解包 { messages } 包装并过滤无效项', () => {
     const messages = normalizeChatMessages({
       messages: [

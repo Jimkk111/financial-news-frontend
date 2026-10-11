@@ -5,6 +5,11 @@ export interface ChatMessage {
   reasoning?: string
   /** 联网搜索引用来源：仅历史消息归一化时填充，不回传后端；下标与正文 [n] 引用对应 */
   sources?: AiSource[]
+  generationId?: string
+  status?: GenerationStatus
+  lastSeq?: number
+  messageId?: number
+  errorCode?: string | null
 }
 
 /** 联网搜索引用来源 */
@@ -24,6 +29,67 @@ export interface SessionInfo {
   updatedAt: string
 }
 
+export interface CreateSessionResponse {
+  sessionId?: string
+  session_id?: string
+}
+
+export interface ChatRequest {
+  messages: ChatMessage[]
+  sessionId?: string
+  webSearch?: boolean
+  stream?: boolean
+}
+
+export type StreamChatRequest = Omit<ChatRequest, 'stream'>
+
+export interface ChatCompletionResponse {
+  content: string
+  sessionId?: string
+  reasoning?: string
+  sources?: unknown
+}
+
+export type GenerationStatus = 'queued' | 'running' | 'cancel_requested' | 'completed' | 'cancelled' | 'failed'
+
+export interface GenerationCreated {
+  generationId: string
+  sessionId: string
+  messageId: number
+  status: GenerationStatus
+  lastSeq: number
+}
+
+export interface GenerationSnapshot extends GenerationCreated {
+  content: string
+  reasoning: string
+  sources: AiSource[]
+  errorCode: string | null
+}
+
+export type GenerationConnection = 'creating' | 'connecting' | 'connected' | 'reconnecting' | 'offline' | 'stopping' | 'stop_pending' | 'error' | 'complete'
+
+export interface GenerationRecord {
+  key: string
+  request: StreamChatRequest
+  userMessageId: string
+  assistantMessageId: string
+  createdAt: string
+  snapshot?: GenerationSnapshot
+  frozenSnapshot?: GenerationSnapshot
+  cancelPending: boolean
+  connection: GenerationConnection
+  error?: string
+}
+
+export interface GenerationHandle {
+  promise: Promise<GenerationSnapshot | undefined>
+  /** 只关闭本机订阅，不取消服务端任务。 */
+  abort: () => void
+  /** 持久化取消意图，再调用服务端取消接口。 */
+  cancel: () => void
+}
+
 /** 聊天气泡的视图模型（在 ChatMessage 基础上增加渲染所需的展示字段） */
 export type MessageStatus = 'streaming' | 'complete'
 
@@ -39,4 +105,8 @@ export interface Message {
   sources?: AiSource[]
   timestamp: Date
   status?: MessageStatus
+  generationId?: string
+  generationStatus?: GenerationStatus
+  lastSeq?: number
+  errorCode?: string | null
 }

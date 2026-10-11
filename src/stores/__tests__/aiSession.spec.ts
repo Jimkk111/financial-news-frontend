@@ -1,569 +1,247 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { StreamChatHandle, StreamChatOptions, StreamChatResult } from '@/api/ai'
-import type { AiSource } from '@/types'
+import type { GenerationRecord, GenerationSnapshot, GenerationHandle } from '@/types'
+import { useAiSessionStore } from '../aiSession'
+import * as service from '@/services/ai'
+import { toast } from '@/utils/toast'
 import { ApiError } from '@/api/request'
 
-vi.mock('@/api/ai', () => ({
-  createSession: vi.fn(),
-  getSessions: vi.fn(),
-  getSessionMessages: vi.fn(),
-  deleteSession: vi.fn(),
-  updateSessionTitle: vi.fn(),
-  streamChat: vi.fn(),
-  healthCheck: vi.fn(),
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => auth }))
+vi.mock('@/utils/toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), info: vi.fn() } }))
+vi.mock('@/services/ai', () => ({
+  getSessions: vi.fn(), getSessionMessages: vi.fn(), deleteSession: vi.fn(), updateSessionTitle: vi.fn(), healthCheck: vi.fn(),
+  readGenerationRecords: vi.fn(), saveGenerationRecord: vi.fn(), followGeneration: vi.fn(),
+  isGenerationTerminal: (status: string) => ['completed', 'cancelled', 'failed'].includes(status),
+  generationErrorMessage: (error: Error) => error.message,
 }))
-
-vi.mock('@/utils/toast', () => ({
-  toast: {
-    error: vi.fn(),
-    warning: vi.fn(),
-    success: vi.fn(),
-    info: vi.fn(),
-  },
-  errorMessage: vi.fn(),
-}))
-
-import { useAiSessionStore } from '../aiSession'
-import { toast } from '@/utils/toast'
-import {
-  createSession,
-  getSessions,
-  getSessionMessages,
-  streamChat,
-  healthCheck,
-} from '@/api/ai'
-
-const createSessionMock = vi.mocked(createSession)
-const getSessionsMock = vi.mocked(getSessions)
-const getSessionMessagesMock = vi.mocked(getSessionMessages)
-const streamChatMock = vi.mocked(streamChat)
-
-/** 构造可控的流式 handle：测试中手动派发增量 / 完成 / 中止 */
-function createStreamHandle() {
-  let capturedOptions: StreamChatOptions | undefined
-  let capturedResolve: ((result: StreamChatResult) => void) | undefined
-  let capturedReject: ((error: unknown) => void) | undefined
-  const abort = vi.fn()
-
-  const handle: StreamChatHandle = {
-    promise: new Promise<StreamChatResult>((resolve, reject) => {
-      capturedResolve = resolve
-      capturedReject = reject
-    }),
-    abort,
-  }
-
-  return {
-    handle,
-    abort,
-    options: () => capturedOptions,
-    onChunk: (chunk: string) => capturedOptions?.onChunk(chunk),
-    onReasoning: (chunk: string) => capturedOptions?.onReasoning?.(chunk),
-    onSources: (batch: AiSource[]) => capturedOptions?.onSources?.(batch),
-    onAccepted: (sessionId: string) => capturedOptions?.onAccepted?.(sessionId),
-    resolve: (result: StreamChatResult) => capturedResolve?.(result),
-    reject: (error: unknown) => capturedReject?.(error),
-    inject: () => {
-      streamChatMock.mockImplementation((_messages, options) => {
-        capturedOptions = options
-        return handle
-      })
-    },
-  }
+const auth = reactive({ user: { uid: 'owner' } as { uid: string } | null, init: vi.fn().mockResolvedValue(undefined) })
+const snapshot = (extra: Partial<GenerationSnapshot> = {}): GenerationSnapshot => ({
+  generationId: 'g1', sessionId: 's1', messageId: 123, status: 'running', lastSeq: 0,
+  content: '', reasoning: '', sources: [], errorCode: null, ...extra,
+})
+let active: Array<{
+  record: GenerationRecord
+  callbacks: Parameters<typeof service.followGeneration>[2]
+  handle: GenerationHandle
+  resolve: (result?: GenerationSnapshot) => void
+}>
+function update(index: number, state: GenerationSnapshot, connection: GenerationRecord['connection'] = 'connected') {
+  const task = active[index]!
+  task.record.snapshot = state
+  task.record.connection = connection
+  task.callbacks.onUpdate(task.record)
 }
+async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve() }
 
-async function flushMicrotasks() {
-  await Promise.resolve()
-  await Promise.resolve()
-  await Promise.resolve()
-}
+beforeEach(() => {
+  vi.clearAllMocks()
+  localStorage.clear()
+  setActivePinia(createPinia())
+  auth.user = { uid: 'owner' }
+  active = []
+  vi.mocked(service.getSessions).mockResolvedValue([])
+  vi.mocked(service.getSessionMessages).mockResolvedValue([])
+  vi.mocked(service.healthCheck).mockResolvedValue({ status: 'ok' })
+  vi.mocked(service.readGenerationRecords).mockReturnValue([])
+  vi.mocked(service.saveGenerationRecord).mockImplementation(() => {})
+  vi.mocked(service.followGeneration).mockImplementation((_owner, record, callbacks) => {
+    let resolve: (result?: GenerationSnapshot) => void = () => {}
+    const handle: GenerationHandle = {
+      promise: new Promise(r => { resolve = r }), abort: vi.fn(),
+      cancel: vi.fn(() => {
+        record.frozenSnapshot = record.snapshot ? JSON.parse(JSON.stringify(record.snapshot)) : undefined
+        record.cancelPending = true
+        record.connection = 'stop_pending'
+        callbacks.onUpdate(record)
+      }),
+    }
+    active.push({ record, callbacks, handle, resolve })
+    return handle
+  })
+})
+afterEach(() => vi.useRealTimers())
 
-describe('useAiSessionStore', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    localStorage.clear()
-    vi.clearAllMocks()
-    getSessionsMock.mockResolvedValue([])
+describe('AI 会话持久任务接入', () => {
+  it('创建明确被拒绝后解除发送锁定，保留失败气泡', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    active[0]!.record.error = '当前会话仍在生成'
+    active[0]!.callbacks.onError(new ApiError('409', '当前会话仍在生成'))
+    active[0]!.resolve()
+    await flush()
+    expect(store.isSending).toBe(false)
+    expect(store.messages[1]).toMatchObject({ status: 'complete', generationStatus: 'failed' })
+    expect(store.error).toBe('当前会话仍在生成')
   })
 
-  describe('sendMessage', () => {
-    it('划词提问在新会话发送，跳过历史恢复且再次进入不重复发送', async () => {
-      vi.mocked(healthCheck).mockResolvedValue({ status: 'ok' } as Awaited<ReturnType<typeof healthCheck>>)
-      createSessionMock.mockResolvedValue({ sessionId: 'news-session' })
-      localStorage.setItem('aiAssistantLastSessionId', 'old-session')
-      const stream = createStreamHandle()
-      stream.inject()
-      const store = useAiSessionStore()
-      store.currentSessionId = 'old-session'
-      store.queueNewsQuestion('  新闻选中的内容  ')
-
-      const initializing = store.init()
-      for (let i = 0; i < 5; i++) await flushMicrotasks()
-      expect(getSessionMessagesMock).not.toHaveBeenCalled()
-      expect(streamChatMock).toHaveBeenCalledWith([
-        { role: 'user', content: '新闻选中的内容' },
-      ], expect.objectContaining({ sessionId: 'news-session' }))
-      expect(store.pendingNewsQuestion).toBe('')
-      stream.resolve({ content: '解读', reasoning: '', sources: [], aborted: false })
-      await initializing
-
-      getSessionMessagesMock.mockResolvedValue([])
-      await store.init()
-      expect(streamChatMock).toHaveBeenCalledTimes(1)
-    })
-
-    it('新会话创建期间重置，旧请求不会占用发送状态或覆盖新消息', async () => {
-      let resolveOld: (value: { sessionId: string }) => void = () => {}
-      createSessionMock.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
-      const stream = createStreamHandle()
-      stream.inject()
-      const store = useAiSessionStore()
-      const oldSending = store.sendMessage('旧问题')
-      store.createNewSession()
-      createSessionMock.mockResolvedValue({ sessionId: 'news-session' })
-      const newSending = store.sendMessage('新闻选中的内容')
-      await flushMicrotasks()
-      resolveOld({ sessionId: 'old-session' })
-      await oldSending
-      expect(store.isSending).toBe(true)
-      expect(store.currentSessionId).toBe('news-session')
-      expect(store.messages[0]!.content).toBe('新闻选中的内容')
-      stream.resolve({ content: '解读', reasoning: '', sources: [], aborted: false })
-      await newSending
-    })
-
-    it('流式完成后消息落位、会话 ID 更新', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      expect(store.messages[0]!.role).toBe('user')
-
-      stream.onChunk('部分')
-      await flushMicrotasks()
-      expect(store.messages[1]!.status).toBe('streaming')
-
-      stream.resolve({ content: '完整回答', reasoning: '', sources: [], sessionId: 'sess-1', aborted: false })
-      await sending
-
-      expect(store.currentSessionId).toBe('sess-1')
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.content).toBe('完整回答')
-      expect(store.messages[1]!.status).toBe('complete')
-      expect(store.isSending).toBe(false)
-    })
-
-    it('停止生成保留已收到的部分回复', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('写一篇长文')
-      await flushMicrotasks()
-
-      stream.onChunk('部分内容')
-      await flushMicrotasks()
-
-      store.stopGeneration()
-      expect(stream.abort).toHaveBeenCalled()
-
-      stream.resolve({ content: '部分内容', reasoning: '', sources: [], aborted: true })
-      await sending
-
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.content).toBe('部分内容')
-      expect(store.messages[1]!.status).toBe('complete')
-      expect(store.error).toBeNull()
-      expect(store.isSending).toBe(false)
-    })
-
-    it('未收到任何内容时停止则移除占位消息', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      store.stopGeneration()
-      stream.resolve({ content: '', reasoning: '', sources: [], aborted: true })
-      await sending
-
-      expect(store.messages).toHaveLength(1)
-      expect(store.messages[0]!.role).toBe('user')
-    })
-
-    it('思考链先于正文流式展示，完成后保留 reasoning 与思考耗时', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      // 思考链先到：占位消息已创建，正文仍为空
-      stream.onReasoning('让我想想')
-      await flushMicrotasks()
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.role).toBe('assistant')
-      expect(store.messages[1]!.status).toBe('streaming')
-      expect(store.messages[1]!.content).toBe('')
-      expect(store.messages[1]!.reasoning).toBe('让我想想')
-
-      // 正文开始到达，期间思考链继续增量
-      stream.onChunk('正文')
-      stream.onReasoning('补充思考')
-      await flushMicrotasks()
-
-      stream.resolve({
-        content: '正文回答',
-        reasoning: '让我想想补充思考',
-        sources: [],
-        sessionId: 'sess-1',
-        aborted: false,
-      })
-      await sending
-
-      expect(store.messages[1]!.content).toBe('正文回答')
-      expect(store.messages[1]!.reasoning).toBe('让我想想补充思考')
-      expect(store.messages[1]!.reasoningSeconds).toBeGreaterThanOrEqual(1)
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('非思考型模型无 reasoning 时消息不带该字段', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      stream.onChunk('直接回答')
-      stream.resolve({ content: '直接回答', reasoning: '', sources: [], sessionId: 'sess-1', aborted: false })
-      await sending
-
-      expect(store.messages[1]!.content).toBe('直接回答')
-      expect(store.messages[1]!.reasoning).toBeUndefined()
-    })
-
-    it('思考中停止生成时保留已收到的思考链', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('写一篇长文')
-      await flushMicrotasks()
-
-      stream.onReasoning('部分思考')
-      await flushMicrotasks()
-
-      store.stopGeneration()
-      expect(stream.abort).toHaveBeenCalled()
-      stream.resolve({ content: '', reasoning: '部分思考', sources: [], aborted: true })
-      await sending
-
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.content).toBe('')
-      expect(store.messages[1]!.reasoning).toBe('部分思考')
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('思考链已到但流式失败时保留思考链并提示错误', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      stream.onReasoning('思考了但没结果')
-      await flushMicrotasks()
-
-      stream.reject(new ApiError('500', 'AI 响应内容为空'))
-      await sending
-
-      expect(toast.error).toHaveBeenCalledWith('AI 响应内容为空')
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.content).toBe('')
-      expect(store.messages[1]!.reasoning).toBe('思考了但没结果')
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('请求受理即显示思考中占位消息，首增量到达后正常流式', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      // 受理前只有用户消息
-      expect(store.messages).toHaveLength(1)
-
-      stream.onAccepted('sess-1')
-      await flushMicrotasks()
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.role).toBe('assistant')
-      expect(store.messages[1]!.status).toBe('streaming')
-      expect(store.messages[1]!.content).toBe('')
-
-      stream.onReasoning('开始想')
-      stream.onChunk('答')
-      stream.resolve({ content: '答', reasoning: '开始想', sources: [], sessionId: 'sess-1', aborted: false })
-      await sending
-
-      expect(store.messages[1]!.content).toBe('答')
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('受理后未收到任何内容即停止则移除占位消息', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('你好')
-      await flushMicrotasks()
-
-      stream.onAccepted('sess-1')
-      await flushMicrotasks()
-      expect(store.messages).toHaveLength(2)
-
-      store.stopGeneration()
-      stream.resolve({ content: '', reasoning: '', sources: [], aborted: true })
-      await sending
-
-      expect(store.messages).toHaveLength(1)
-      expect(store.messages[0]!.role).toBe('user')
-    })
-
-    it('联网搜索开关随请求下发并持久化', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      expect(store.webSearchEnabled).toBe(false)
-
-      store.setWebSearch(true)
-      expect(localStorage.getItem('aiAssistantWebSearch')).toBe('1')
-
-      const first = store.sendMessage('今天A股行情')
-      await flushMicrotasks()
-      expect(stream.options()?.webSearch).toBe(true)
-      stream.resolve({ content: '答', reasoning: '', sources: [], sessionId: 'sess-1', aborted: false })
-      await first
-
-      const stream2 = createStreamHandle()
-      stream2.inject()
-      store.toggleWebSearch()
-      expect(localStorage.getItem('aiAssistantWebSearch')).toBe('0')
-
-      const second = store.sendMessage('再问')
-      await flushMicrotasks()
-      expect(stream2.options()?.webSearch).toBe(false)
-      stream2.resolve({ content: '答二', reasoning: '', sources: [], sessionId: 'sess-1', aborted: false })
-      await second
-    })
-
-    it('引用来源分批到达时追加到消息，完成后保留', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('最新消息')
-      await flushMicrotasks()
-
-      // 首批来源先于思考/正文到达：占位消息即携带来源
-      stream.onSources([{ title: 'A股大涨', url: 'https://a.com/1' }])
-      await flushMicrotasks()
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.status).toBe('streaming')
-      expect(store.messages[1]!.sources).toHaveLength(1)
-
-      stream.onReasoning('搜到的资料显示')
-      stream.onChunk('根据最新消息[1]')
-      await flushMicrotasks()
-
-      const allSources: AiSource[] = [
-        { title: 'A股大涨', url: 'https://a.com/1' },
-        { title: '央行降息', url: 'https://b.com/2' },
-      ]
-      stream.resolve({ content: '根据最新消息[1]', reasoning: '', sources: allSources, sessionId: 'sess-1', aborted: false })
-      await sending
-
-      expect(store.messages[1]!.sources).toEqual(allSources)
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('搜索阶段停止生成时保留已收到的来源', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('最新消息')
-      await flushMicrotasks()
-
-      stream.onSources([{ title: 'A股大涨', url: 'https://a.com/1' }])
-      await flushMicrotasks()
-
-      store.stopGeneration()
-      stream.resolve({ content: '', reasoning: '', sources: [{ title: 'A股大涨', url: 'https://a.com/1' }], aborted: true })
-      await sending
-
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.sources).toHaveLength(1)
-      expect(store.messages[1]!.status).toBe('complete')
-    })
-
-    it('请求失败时保留用户消息并弹出错误提示', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      streamChatMock.mockReturnValue({
-        promise: Promise.reject(new ApiError('500', '模型服务过载')),
-        abort: vi.fn(),
-      })
-
-      const store = useAiSessionStore()
-      await store.sendMessage('你好')
-
-      expect(toast.error).toHaveBeenCalledWith('模型服务过载')
-      expect(store.error).toBeNull()
-      expect(store.messages).toHaveLength(1)
-      expect(store.messages[0]!.role).toBe('user')
-      expect(store.isSending).toBe(false)
-    })
-
-    it('空内容不触发发送', async () => {
-      const store = useAiSessionStore()
-      await store.sendMessage('   ')
-      expect(streamChatMock).not.toHaveBeenCalled()
-    })
-
-    it('切换会话后旧流结果不写入新会话', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      getSessionMessagesMock.mockResolvedValue([])
-      const stream = createStreamHandle()
-      stream.inject()
-
-      const store = useAiSessionStore()
-      const sending = store.sendMessage('慢问题')
-      await flushMicrotasks()
-
-      // 模拟流式进行中用户切换到另一会话
-      store.selectSession('sess-2')
-      await flushMicrotasks()
-
-      stream.onChunk('迟到的片段')
-      stream.resolve({ content: '迟到的完整回复', reasoning: '', sources: [], aborted: false })
-      await sending
-      await flushMicrotasks()
-
-      // sess-2 的消息列表为空，旧流结果被丢弃
-      expect(store.messages).toHaveLength(0)
-      expect(store.currentSessionId).toBe('sess-2')
-    })
+  it('发送前持久化，任务原子创建会话且保留正文、思考和来源', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage(' 问题 ')
+    expect(service.saveGenerationRecord).toHaveBeenCalledBefore(vi.mocked(service.followGeneration))
+    expect(active[0]!.record.request).toEqual({ messages: [{ role: 'user', content: '问题' }], webSearch: false })
+    expect(store.isSending).toBe(true)
+    expect(store.messages).toHaveLength(2)
+    update(0, snapshot({ content: '答', reasoning: '思考', lastSeq: 3, sources: [{ title: '来源', url: 'https://a.com' }] }), 'complete')
+    expect(store.currentSessionId).toBe('s1')
+    expect(store.messages[1]).toMatchObject({ content: '答', reasoning: '思考', lastSeq: 3, generationId: 'g1' })
+    expect(localStorage.getItem('aiAssistantLastSessionId:owner')).toBe('s1')
   })
 
-  describe('selectSession', () => {
-    it('加载历史会话时保留 assistant 思考链与引用来源', async () => {
-      getSessionMessagesMock.mockResolvedValue([
-        { role: 'user', content: '问' },
-        { role: 'assistant', content: '答', reasoning: '历史思考' },
-        {
-          role: 'assistant',
-          content: '带来源的答',
-          sources: [{ title: 'A股大涨', url: 'https://a.com/1', siteName: '新浪财经' }],
-        },
-      ])
-
-      const store = useAiSessionStore()
-      await store.selectSession('sess-h')
-
-      expect(store.currentSessionId).toBe('sess-h')
-      expect(store.messages[1]!.content).toBe('答')
-      expect(store.messages[1]!.reasoning).toBe('历史思考')
-      expect(store.messages[1]!.status).toBe('complete')
-      expect(store.messages[2]!.reasoning).toBeUndefined()
-      expect(store.messages[2]!.sources).toEqual([
-        { title: 'A股大涨', url: 'https://a.com/1', siteName: '新浪财经' },
-      ])
-    })
+  it('切页返回重复 init 不重载历史、不关闭正在生成的订阅', async () => {
+    const store = useAiSessionStore()
+    await store.init()
+    await store.sendMessage('问题')
+    update(0, snapshot({ content: '部分' }), 'connecting')
+    await store.init()
+    expect(service.getSessionMessages).not.toHaveBeenCalled()
+    expect(service.followGeneration).toHaveBeenCalledOnce()
+    expect(active[0]!.handle.abort).not.toHaveBeenCalled()
+    expect(store.messages[1]!.content).toBe('部分')
+    expect(store.isSending).toBe(true)
   })
 
-  describe('regenerate', () => {
-    it('移除最后一轮问答后重发用户消息', async () => {
-      createSessionMock.mockResolvedValue({ sessionId: 'sess-1' })
-      const stream1 = createStreamHandle()
-      stream1.inject()
-
-      const store = useAiSessionStore()
-      const first = store.sendMessage('第一问')
-      await flushMicrotasks()
-      stream1.resolve({ content: '第一答', reasoning: '', sources: [], aborted: false })
-      await first
-      expect(store.messages).toHaveLength(2)
-
-      const stream2 = createStreamHandle()
-      stream2.inject()
-      const regenerating = store.regenerate()
-
-      // 旧问答被移除，用户消息重新入列
-      expect(store.messages).toHaveLength(1)
-      expect(store.messages[0]!.role).toBe('user')
-      expect(store.messages[0]!.content).toBe('第一问')
-
-      stream2.resolve({ content: '重新回答', reasoning: '', sources: [], aborted: false })
-      await regenerating
-
-      expect(store.messages).toHaveLength(2)
-      expect(store.messages[1]!.content).toBe('重新回答')
-    })
+  it('切换会话不取消后台任务，旧回调不会写入新会话', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot({ content: '部分' }), 'connecting')
+    await store.selectSession('s2')
+    update(0, snapshot({ content: '旧会话完整回复', status: 'completed' }), 'complete')
+    expect(store.currentSessionId).toBe('s2')
+    expect(store.messages).toHaveLength(0)
+    expect(active[0]!.handle.abort).not.toHaveBeenCalled()
+    expect(active[0]!.handle.cancel).not.toHaveBeenCalled()
   })
 
-  describe('会话列表', () => {
-    it('groupedSessions 按时间分组', () => {
-      const store = useAiSessionStore()
-      const today = new Date()
-      const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  it('新建会话不取消旧任务，新问题使用不同幂等键', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('第一问')
+    store.createNewSession()
+    await store.sendMessage('第二问')
+    expect(active).toHaveLength(2)
+    expect(active[0]!.record.key).not.toBe(active[1]!.record.key)
+    update(0, snapshot({ content: '迟到内容' }), 'connecting')
+    expect(store.currentSessionId).toBeNull()
+    expect(store.messages[0]!.content).toBe('第二问')
+  })
 
-      store.sessions = [
-        { sessionId: 'a', title: '今天', createdAt: '', updatedAt: today.toISOString() },
-        { sessionId: 'b', title: '昨天', createdAt: '', updatedAt: new Date(midnight.getTime() - 3600_000).toISOString() },
-        { sessionId: 'c', title: '本周', createdAt: '', updatedAt: new Date(midnight.getTime() - 3 * 86_400_000).toISOString() },
-        { sessionId: 'd', title: '更早', createdAt: '', updatedAt: new Date(midnight.getTime() - 10 * 86_400_000).toISOString() },
-      ]
+  it('刷新后从历史中恢复空助手消息和未完成任务', async () => {
+    localStorage.setItem('aiAssistantLastSessionId:owner', 's1')
+    vi.mocked(service.getSessionMessages).mockResolvedValue([
+      { role: 'user', content: '问题' },
+      { role: 'assistant', content: '', generationId: 'g1', status: 'queued', lastSeq: 0, messageId: 123 },
+    ])
+    const store = useAiSessionStore()
+    await store.init()
+    expect(store.isSending).toBe(true)
+    expect(service.followGeneration).toHaveBeenCalledOnce()
+    expect(active[0]!.record.snapshot?.generationId).toBe('g1')
+    expect(store.messages[1]!.generationId).toBe('g1')
+  })
 
-      const groups = store.groupedSessions
-      expect(groups.map((g) => g.key)).toEqual(['today', 'yesterday', 'thisWeek', 'older'])
-      expect(groups[0]!.sessions[0]!.sessionId).toBe('a')
-    })
+  it('恢复创建超时的草稿，保留原请求和幂等键', async () => {
+    const pending: GenerationRecord = { key: 'original-key', request: { messages: [{ role: 'user', content: '待确认问题' }] },
+      userMessageId: 'u1', assistantMessageId: 'a1', createdAt: new Date().toISOString(), cancelPending: true, connection: 'stop_pending' }
+    vi.mocked(service.readGenerationRecords).mockReturnValue([pending])
+    const store = useAiSessionStore()
+    await store.init()
+    expect(active[0]!.record).toMatchObject(pending)
+    expect(store.messages[0]!.content).toBe('待确认问题')
+    expect(store.isStopping).toBe(true)
+    expect(store.connectionNotice).toContain('停止请求待同步')
+  })
 
-    it('filteredSessions 按标题不区分大小写过滤', () => {
-      const store = useAiSessionStore()
-      store.sessions = [
-        { sessionId: 'a', title: 'Stock Report', createdAt: '', updatedAt: '' },
-        { sessionId: 'b', title: '量化策略', createdAt: '', updatedAt: '' },
-      ]
+  it('停止立即冻结显示，cancel_requested 仍等待，终态再补齐内容', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot({ content: '停止前' }), 'connecting')
+    store.stopGeneration()
+    expect(active[0]!.handle.cancel).toHaveBeenCalledOnce()
+    expect(active[0]!.handle.abort).not.toHaveBeenCalled()
+    expect(store.isStopping).toBe(true)
+    update(0, snapshot({ status: 'cancel_requested', content: '服务端已保存额外内容' }), 'stopping')
+    expect(store.messages[1]!.content).toBe('停止前')
+    expect(store.isSending).toBe(true)
+    active[0]!.record.cancelPending = false
+    update(0, snapshot({ status: 'cancelled', content: '最终保留内容', lastSeq: 9 }), 'complete')
+    expect(store.messages[1]).toMatchObject({ content: '最终保留内容', generationStatus: 'cancelled', lastSeq: 9 })
+    expect(store.isSending).toBe(false)
+  })
 
-      store.setSearchQuery('stock')
-      expect(store.filteredSessions.map((s) => s.sessionId)).toEqual(['a'])
+  it('失败保留空助手消息和错误状态', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot({ status: 'failed', errorCode: 'WORKER_INTERRUPTED' }), 'complete')
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[1]).toMatchObject({ content: '', generationStatus: 'failed', errorCode: 'WORKER_INTERRUPTED', status: 'complete' })
+    expect(store.isSending).toBe(false)
+  })
 
-      store.setSearchQuery('量化')
-      expect(store.filteredSessions.map((s) => s.sessionId)).toEqual(['b'])
-    })
+  it('重新生成保留上一轮消息并使用新键', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot({ status: 'completed', content: '旧答' }), 'complete')
+    active[0]!.resolve(active[0]!.record.snapshot)
+    await flush()
+    await store.regenerate()
+    expect(store.messages).toHaveLength(4)
+    expect(store.messages[1]!.content).toBe('旧答')
+    expect(active[1]!.record.key).not.toBe(active[0]!.record.key)
+  })
+
+  it('非终态任务阻止删除会话', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('问题')
+    update(0, snapshot(), 'connecting')
+    expect(await store.removeSession('s1')).toBe(false)
+    expect(service.deleteSession).not.toHaveBeenCalled()
+    expect(toast.warning).toHaveBeenCalled()
+  })
+
+  it('划词提问只发送一次，返回页面保留任务', async () => {
+    const store = useAiSessionStore()
+    store.queueNewsQuestion('新闻选中内容')
+    await store.init()
+    expect(active[0]!.record.request.messages).toEqual([{ role: 'user', content: '新闻选中内容' }])
+    await store.init()
+    expect(service.followGeneration).toHaveBeenCalledOnce()
+    expect(store.pendingNewsQuestion).toBe('')
+  })
+
+  it('重复初始化共享同一次加载', async () => {
+    const store = useAiSessionStore()
+    await Promise.all([store.init(), store.init()])
+    expect(service.getSessions).toHaveBeenCalledOnce()
+  })
+
+  it('账号切换只断开订阅，清空展示并隔离持久记录', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('私有问题')
+    auth.user = null
+    expect(active[0]!.handle.abort).toHaveBeenCalledOnce()
+    expect(active[0]!.handle.cancel).not.toHaveBeenCalled()
+    expect(store.messages).toEqual([])
+    expect(store.needsLogin).toBe(true)
+    auth.user = { uid: 'other' }
+    await store.init()
+    expect(service.readGenerationRecords).toHaveBeenLastCalledWith('other')
+  })
+
+  it('存储失败不提交任务，空问题也不提交', async () => {
+    const store = useAiSessionStore()
+    await store.sendMessage('  ')
+    vi.mocked(service.saveGenerationRecord).mockImplementation(() => { throw new Error('quota') })
+    await store.sendMessage('问题')
+    expect(service.followGeneration).not.toHaveBeenCalled()
+    expect(store.messages).toEqual([])
+    expect(toast.error).toHaveBeenCalled()
+  })
+
+  it('联网搜索开关写入新任务请求', async () => {
+    const store = useAiSessionStore()
+    store.setWebSearch(true)
+    await store.sendMessage('最新行情')
+    expect(active[0]!.record.request.webSearch).toBe(true)
+    expect(localStorage.getItem('aiAssistantWebSearch')).toBe('1')
   })
 })

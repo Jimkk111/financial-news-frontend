@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import { Sparkles } from 'lucide-vue-next'
 import { useAiSessionStore } from '@/stores/aiSession'
 import MessageBubble from './MessageBubble.vue'
 
 const store = useAiSessionStore()
+const router = useRouter()
 const scrollContainerRef = ref<HTMLElement | null>(null)
 
 const quickQuestions = [
@@ -79,16 +81,22 @@ function handleQuickQuestion(question: string) {
 <template>
   <div ref="scrollContainerRef" class="chat" @scroll.passive="handleScroll">
     <div class="chat__inner">
-      <p v-if="store.error" class="nb-alert nb-alert--error chat__error">
+      <p v-if="store.error && store.error !== store.connectionNotice" class="nb-alert nb-alert--error chat__error">
         {{ store.error }}
       </p>
+
+      <div v-if="store.connectionNotice || store.needsLogin" class="chat__error" role="status" aria-live="polite">
+        {{ store.needsLogin ? '登录已失效，请重新登录后恢复对话' : store.connectionNotice }}
+        <button v-if="store.needsLogin" class="chat__quick-item" @click="router.push({ name: 'login', query: { redirect: '/ai' } })">重新登录</button>
+        <button v-else-if="store.canRetryConnection" class="chat__quick-item" @click="store.retryConnection()">重试连接</button>
+      </div>
 
       <div v-if="store.hasMessages" class="chat__messages">
         <MessageBubble
           v-for="(message, index) in store.messages"
           :key="message.id"
           :message="message"
-          :can-regenerate="index === store.messages.length - 1 && message.role === 'assistant'"
+          :can-regenerate="!store.isSending && index === store.messages.length - 1 && message.role === 'assistant'"
           @regenerate="store.regenerate()"
         />
       </div>

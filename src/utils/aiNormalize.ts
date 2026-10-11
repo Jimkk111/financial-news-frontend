@@ -52,15 +52,23 @@ export function normalizeChatMessages(raw: unknown): ChatMessage[] {
       if (!source) return null
       const role = source.role === 'assistant' ? 'assistant' : 'user'
       const content = typeof source.content === 'string' ? source.content : ''
-      if (!content) return null
+      const generationId = pickString(source, ['generationId', 'generation_id'])
+      if (!content && !generationId) return null
       // 思考型模型的 assistant 回复带完整思考链，兼容 camelCase / snake_case，可能缺失
-      const reasoning = pickString(source, ['reasoningContent', 'reasoning_content'])
+      const reasoning = pickString(source, ['reasoning', 'reasoningContent', 'reasoning_content'])
       const sources = normalizeSources(source.sources)
       return {
         role,
         content,
         ...(reasoning ? { reasoning } : {}),
         ...(sources ? { sources } : {}),
+        ...(generationId ? {
+          generationId,
+          status: source.status as ChatMessage['status'],
+          lastSeq: typeof source.lastSeq === 'number' ? source.lastSeq : 0,
+          messageId: typeof source.messageId === 'number' ? source.messageId : typeof source.id === 'number' ? source.id : undefined,
+          errorCode: typeof source.errorCode === 'string' ? source.errorCode : null,
+        } : {}),
       }
     })
     .filter((item): item is ChatMessage => item !== null)

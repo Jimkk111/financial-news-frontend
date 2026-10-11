@@ -8,6 +8,7 @@ const props = defineProps<{
   isSending: boolean
   isLoading: boolean
   webSearch: boolean
+  isStopping?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,10 +84,12 @@ function handleKeydown(e: KeyboardEvent) {
         <button
           v-if="isSending"
           class="composer__send is-stop"
-          title="停止生成"
+          :title="isStopping ? '等待停止确认' : '停止生成'"
+          :disabled="isStopping"
           @click="emit('stop')"
         >
-          <n-icon :component="Square" :size="12" />
+          <n-spin v-if="isStopping" size="small" />
+          <n-icon v-else :component="Square" :size="12" />
         </button>
         <button
           v-else

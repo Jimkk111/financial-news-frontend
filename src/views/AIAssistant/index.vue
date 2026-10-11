@@ -65,7 +65,7 @@ onUnmounted(() => {
         <button
           class="nb-icon-btn ai__header-btn"
           title="新建会话"
-          :disabled="store.isLoading || store.isSending"
+          :disabled="store.isLoading"
           @click="handleNewConversation"
         >
           <n-spin v-if="store.isLoading" size="small" />
@@ -83,6 +83,7 @@ onUnmounted(() => {
         :disabled="!store.isServiceHealthy"
         :is-sending="store.isSending"
         :is-loading="store.isLoading"
+        :is-stopping="store.isStopping"
         :web-search="store.webSearchEnabled"
         @send="handleSend"
         @stop="store.stopGeneration"

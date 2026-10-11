@@ -22,3 +22,35 @@ export function extractSseEvents(
   }
   return { events, rest }
 }
+
+export interface SseFrame {
+  event: string
+  id?: string
+  data: string
+}
+
+/** 按空行分帧，保留命名事件和 id，支持多行 data 和跨网络分片。 */
+export function extractSseFrames(text: string): { events: SseFrame[]; rest: string } {
+  const events: SseFrame[] = []
+  const separator = /\r?\n\r?\n/g
+  let start = 0
+  let match: RegExpExecArray | null
+  while ((match = separator.exec(text))) {
+    const block = text.slice(start, match.index)
+    start = match.index + match[0].length
+    let event = 'message'
+    let id: string | undefined
+    const data: string[] = []
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith(':')) continue
+      const colon = line.indexOf(':')
+      const field = colon < 0 ? line : line.slice(0, colon)
+      const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '')
+      if (field === 'event') event = value
+      else if (field === 'id') id = value
+      else if (field === 'data') data.push(value)
+    }
+    if (data.length) events.push({ event, id, data: data.join('\n') })
+  }
+  return { events, rest: text.slice(start) }
+}
