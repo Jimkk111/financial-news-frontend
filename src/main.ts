@@ -1,4 +1,6 @@
 import { createApp } from 'vue'
+import request from '@/api/request'
+import { installMediaRefresh } from '@/utils/mediaAccess'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
@@ -30,5 +32,7 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('[unhandledrejection]:', err)
   toast.error(errorMessage(err, '请求出现异常，请稍后重试'))
 })
+
+installMediaRefresh(params => request.get('/media/access', { params }) as unknown as Promise<{ url: string }>)
 
 app.mount('#app')

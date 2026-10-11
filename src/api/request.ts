@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { rememberMediaAccess } from '@/utils/mediaAccess'
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 
 // ============================================================
@@ -49,6 +50,7 @@ request.interceptors.response.use(
 
     // 成功 —— 解包 data
     const inner = body.data
+    rememberMediaAccess(inner)
 
     // 分页响应：data 含 records 时，映射为 { data, pagination } 结构与现有代码对齐
     if (inner && typeof inner === 'object' && 'records' in inner) {

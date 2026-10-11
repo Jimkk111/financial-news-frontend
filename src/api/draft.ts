@@ -51,14 +51,14 @@ export async function deletePublishedNews(id: number): Promise<MessageResponse> 
   return del<MessageResponse>(`/news/published/${id}`)
 }
 
-export async function uploadImage(file: File): Promise<{ url: string; filename: string }> {
+export async function uploadImage(file: File): Promise<{ url: string }> {
   const formData = new FormData()
-  formData.append('image', file)
-  return post<{ url: string; filename: string }>('/upload/image', formData)
+  formData.append('file', file)
+  return post<{ url: string }>('/media/image', formData, { timeout: 300000 })
 }
 
-export async function uploadVideo(file: File): Promise<{ url: string; filename: string }> {
+export async function uploadVideo(file: File): Promise<{ url: string }> {
   const formData = new FormData()
-  formData.append('video', file)
-  return post<{ url: string; filename: string }>('/upload/video', formData)
+  formData.append('file', file)
+  return post<{ url: string }>('/media/video', formData, { timeout: 600000 })
 }

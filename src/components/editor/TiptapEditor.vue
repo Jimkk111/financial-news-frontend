@@ -28,6 +28,7 @@ import {
   Video,
 } from 'lucide-vue-next'
 import { uploadImage, uploadVideo } from '@/api/draft'
+import { getApiErrorMessage } from '@/utils/apiError'
 import { validateUploadFile, IMAGE_UPLOAD_RULE, VIDEO_UPLOAD_RULE } from '@/utils/file'
 
 const props = defineProps<{
@@ -46,6 +47,7 @@ const isUploadingImage = ref(false)
 
 const videoFileInputRef = ref<HTMLInputElement | null>(null)
 const isUploadingVideo = ref(false)
+const uploadError = ref('')
 
 // 编辑器内部是 ProseMirror 文档树，props.modelValue 是块级 JSON（ArticleContent）：
 // 初始化时经 blocksToTiptap 转成文档树；文档树变化时 onUpdate 经 tiptapToBlocks 通知父组件；
@@ -255,15 +257,15 @@ const handleImageUpload = async (event: Event) => {
     fileInputRef.value.value = ''
   }
 
-  // 编辑器内无错误展示区，文件不合法时静默忽略
-  if (validateUploadFile(file, IMAGE_UPLOAD_RULE)) return
+  uploadError.value = validateUploadFile(file, IMAGE_UPLOAD_RULE) || ''
+  if (uploadError.value) return
 
   isUploadingImage.value = true
   try {
     const { url } = await uploadImage(file)
     editor.value?.chain().focus().setImage({ src: url }).run()
   } catch (error) {
-    console.error('上传图片失败:', error)
+    uploadError.value = getApiErrorMessage(error, '图片上传失败，请重试')
   } finally {
     isUploadingImage.value = false
   }
@@ -293,7 +295,8 @@ const handleVideoUpload = async (event: Event) => {
     videoFileInputRef.value.value = ''
   }
 
-  if (validateUploadFile(file, VIDEO_UPLOAD_RULE)) return
+  uploadError.value = validateUploadFile(file, VIDEO_UPLOAD_RULE) || ''
+  if (uploadError.value) return
 
   isUploadingVideo.value = true
   try {
@@ -303,7 +306,7 @@ const handleVideoUpload = async (event: Event) => {
       attrs: { src: url },
     }).run()
   } catch (error) {
-    console.error('上传视频失败:', error)
+    uploadError.value = getApiErrorMessage(error, '视频上传失败，请重试')
   } finally {
     isUploadingVideo.value = false
   }
@@ -335,6 +338,8 @@ const handleVideoUpload = async (event: Event) => {
       </span>
     </div>
 
+    <p v-if="uploadError" class="tiptap-editor__upload-error" role="alert">{{ uploadError }}</p>
+
     <!-- Editor Content -->
     <EditorContent :editor="editor" />
 
@@ -348,7 +353,7 @@ const handleVideoUpload = async (event: Event) => {
     <input
       ref="videoFileInputRef"
       type="file"
-      accept="video/mp4,video/webm,video/ogg"
+      accept="video/mp4,video/webm"
       class="tiptap-editor__file"
       @change="handleVideoUpload"
     />
@@ -369,6 +374,12 @@ const handleVideoUpload = async (event: Event) => {
   &:focus-within {
     border-color: var(--nb-brand);
     box-shadow: 0 0 0 3px var(--nb-brand-subtle);
+  }
+
+  &__upload-error {
+    margin: 0;
+    padding: 8px 12px;
+    color: var(--nb-danger, #d03050);
   }
 
   &__toolbar {

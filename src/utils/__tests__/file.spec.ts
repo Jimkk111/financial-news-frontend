@@ -15,22 +15,22 @@ describe('validateUploadFile', () => {
     )
   })
 
-  it('图片：超过 5MB 返回大小错误文案', () => {
+  it('图片：超过 10MB 返回大小错误文案', () => {
     const file = new File(['x'], 'a.png', { type: 'image/png' })
-    Object.defineProperty(file, 'size', { value: 5 * 1024 * 1024 + 1 })
-    expect(validateUploadFile(file, IMAGE_UPLOAD_RULE)).toBe('图片大小不能超过 5MB')
+    Object.defineProperty(file, 'size', { value: 10 * 1024 * 1024 + 1 })
+    expect(validateUploadFile(file, IMAGE_UPLOAD_RULE)).toBe('图片大小不能超过 10MB')
   })
 
   it('视频：类型不在白名单内返回类型错误文案', () => {
     const file = new File(['x'], 'a.png', { type: 'image/png' })
     expect(validateUploadFile(file, VIDEO_UPLOAD_RULE)).toBe(
-      '请选择有效的视频文件（MP4、WebM、OGG）',
+      '请选择有效的视频文件（MP4、WebM）',
     )
   })
 
-  it('视频：超过 100MB 返回大小错误文案', () => {
+  it('视频：超过 200MB 返回大小错误文案', () => {
     const file = new File(['x'], 'a.mp4', { type: 'video/mp4' })
-    Object.defineProperty(file, 'size', { value: 101 * 1024 * 1024 })
-    expect(validateUploadFile(file, VIDEO_UPLOAD_RULE)).toBe('视频大小不能超过 100MB')
+    Object.defineProperty(file, 'size', { value: 200 * 1024 * 1024 + 1 })
+    expect(validateUploadFile(file, VIDEO_UPLOAD_RULE)).toBe('视频大小不能超过 200MB')
   })
 })

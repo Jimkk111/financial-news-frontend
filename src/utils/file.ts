@@ -16,16 +16,16 @@ export interface FileUploadRule {
 
 export const IMAGE_UPLOAD_RULE: FileUploadRule = {
   allowedTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'],
-  maxSizeMB: 5,
+  maxSizeMB: 10,
   kindLabel: '图片',
   typeLabel: 'PNG、JPEG、GIF、WebP',
 }
 
 export const VIDEO_UPLOAD_RULE: FileUploadRule = {
-  allowedTypes: ['video/mp4', 'video/webm', 'video/ogg'],
-  maxSizeMB: 100,
+  allowedTypes: ['video/mp4', 'video/webm'],
+  maxSizeMB: 200,
   kindLabel: '视频',
-  typeLabel: 'MP4、WebM、OGG',
+  typeLabel: 'MP4、WebM',
 }
 
 /** 校验文件类型与大小：通过返回 null，否则返回可直接展示的错误文案 */
