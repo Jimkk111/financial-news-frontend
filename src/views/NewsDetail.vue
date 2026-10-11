@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, NPopover, NSpin, NTag, useMessage } from 'naive-ui'
 import {
@@ -26,7 +26,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 const message = useMessage()
 
-const newsId = ref(Number(route.params.id))
+const newsId = computed(() => Number(route.params.id))
 const uid = authStore.user?.uid || ''
 
 const news = ref<NewsType | null>(null)
@@ -143,6 +143,10 @@ const fetchNewsDetail = async () => {
   try {
     loading.value = true
     error.value = null
+    news.value = null
+    relatedNews.value = []
+    isFavorited.value = false
+    menuOpen.value = false
     const res = await getNewsDetail(newsId.value)
     news.value = res
 
@@ -164,11 +168,7 @@ const fetchNewsDetail = async () => {
   }
 }
 
-watch(() => newsId.value, fetchNewsDetail)
-
-onMounted(() => {
-  fetchNewsDetail()
-})
+watch(newsId, fetchNewsDetail, { immediate: true })
 
 onUnmounted(() => {
   menuOpen.value = false
