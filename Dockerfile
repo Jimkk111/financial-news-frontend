@@ -23,6 +23,14 @@ RUN npm run build
 # ============================================
 FROM nginx:alpine AS production
 
+# 日志轮转在容器内执行，归档及轮转状态保存到挂载目录
+RUN apk add --no-cache logrotate
+COPY docker/nginx-logrotate.conf /etc/nginx-logrotate.conf
+COPY docker/nginx-logrotate.sh /etc/periodic/hourly/nginx-logrotate
+COPY docker/40-start-logrotate.sh /docker-entrypoint.d/40-start-logrotate.sh
+RUN chmod 644 /etc/nginx-logrotate.conf \
+    && chmod 755 /etc/periodic/hourly/nginx-logrotate /docker-entrypoint.d/40-start-logrotate.sh
+
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY nginx-default.conf /etc/nginx/conf.d/default.conf

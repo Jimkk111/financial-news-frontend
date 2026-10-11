@@ -12,10 +12,17 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      # Nginx 日志持久化，重建容器后保留；容器内定时轮转
+      - ./logs/nginx:/var/log/nginx
       # ACME HTTP-01 验证文件（certbot/acme.sh 写入宿主机，nginx 对外提供）
       - ./certbot/wwwroot:/var/www/certbot
       # TLS 证书（acme.sh --install-cert 维护，含续期后自动 reload）
       - ./certs:/etc/nginx/ssl:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Linux 下访问宿主机
     networks:

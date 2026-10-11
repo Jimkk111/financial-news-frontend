@@ -38,6 +38,33 @@ pnpm type-check  # 类型检查
 pnpm test        # 单元测试
 ```
 
+## 部署日志
+
+Nginx 日志通过 `./logs/nginx:/var/log/nginx` 挂载保存在主机项目目录下，删除或重建容器不会删除这些文件。
+
+- `logs/nginx/access.log`：访问日志（静态资源等配置了 `access_log off` 的请求不记录）。
+- `logs/nginx/error.log`：错误日志。
+- 容器每小时检查轮转：按天轮转，或检查时发现文件超过 20 MB 则提前轮转；这是检查阈值，不是文件大小硬限制。
+- 每类日志保留最近 14 份归档，旧归档压缩，最近一份延迟到下次轮转压缩；并非固定保留 14 天。
+- 轮转状态保存在同一目录的 `.logrotate.status`，重建后继续使用。
+- `logs/` 不提交 Git，也不进入 Docker 构建上下文。
+
+在服务器项目目录执行以下命令应用配置：
+
+```bash
+docker compose up -d --build frontend
+sudo tail -n 100 -f logs/nginx/access.log
+sudo tail -n 100 -f logs/nginx/error.log
+```
+
+Nginx 访问和错误日志改为文件输出后，`docker logs` 主要用于查看容器启动和轮转任务的诊断信息；Docker 自身日志另行限制为每份 10 MB、最多 3 份。旧容器的 Docker 日志不会自动迁入新日志目录，需要时应在重建前导出。
+
+部署后可检查轮转配置（只检查，不实际轮转）：
+
+```bash
+docker compose exec frontend logrotate --debug --state /var/log/nginx/.logrotate.status /etc/nginx-logrotate.conf
+```
+
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。
